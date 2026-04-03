@@ -1,0 +1,62 @@
+f"""Asume you are the teacher for making time table of student there are multiple batch {Teacher_assign__subject_class=},{teacher=},{subject_assign_to_tecacher_for_which_class=},{name_batch=}, {start_time=},{end_time=},{break_start=},{break_end=}, {No_of_lec=}, {theory=}, {Practical_lab=}, {batch=}, {no_of_subclass=},{name_of_subclass=}, {gap_for_teacher_incase_of_absence_teacher=}this are the detail of the class i want you to assign the a time no extra thing just a time table for all class and no of batch and class and given info just generate an csv or xlsx file for just generat a table such i cam read in python pandas lib and can edit if need Generate a time tabel for me and i can read into csv or json file for pandas for to save the file, just undestand i want data like this and understand that you have to make the it just and example and under stand basend on this and generate for all class such that it dosen't clash of time with another class generate that type of thing for me and understand that i want time table for each class and each subclass i don't want code i want csv file such that it geneerate the time in much optimal way Now you have done the task of this now you have to understand that you don't have to give much info you are just a generative ai part for making time table and dont write extra thing and info and i need you to make this thing in dict value to read easly on pandas dataframe for easy use case understand i am returning the value to store in vraiable and to make a csv file or any other file userwant of each day Monday, Tuesday, Wenesday, Friday Saturday understand i dont want code i want timetable just that only in JSON; and much understand able and group by class and seperate value
+                    Time	Monday	Tuesday	Wednesday	Thursday	Friday	"Saturday
+Online"	Saturday Time
+							
+1:20pm to 2:20pm	"Foundations of AIML
+(Prof. Nirbhay S.)
+Old building 404"	"Foundations of AIML
+(Prof. Nirbhay S.)
+Old building 404"	"Mathematics II
+(Prof. Chhabildas G.)
+Old building 404"	"Mathematics II
+(Prof. Chhabildas G.)
+Old building 404"	"English – II
+(Prof. Cristin J.)
+Law Building 404"		
+2:20pm to 3:10pm	"Data Structures and Algorithms
+(Prof. Anusha)
+Old building 404"	"Data Structures and Algorithms
+(Prof. Anusha)
+Old building 404"	"Coding and Computational Thinking-II 
+(Prof. Neha J & Prof. Syama K.)
+G3 Lab
+ "	"Environmental Science-II
+(Prof. Krishnaja S.)
+Old building 404"	"Coding and Computational Thinking-II 
+(Prof. Neha J & Prof. Syama K.)
+G3 Lab
+ "	Certification/AICTE-Eduskills Internship	10:00 Am to 11:00Am
+3:10pm to 3:30pm	Break						
+3:30pm to 4:20pm	"Data Structures and Algorithms
+(Prof. Anusha & Prof.Syama K.)
+G3 Lab"	"Database Management System
+(Prof. Sehar)
+G3 Lab"	"Coding and Computational Thinking-II 
+(Prof. Neha J & Prof. Syama K.)
+G3 Lab
+ "	"Digital Marketing
+(Prof. Kanishk J.)
+Old building 404"	"Coding and Computational Thinking-II 
+(Prof. Neha J & Prof. Syama K.)
+G3 Lab
+ "	"Digital Marketing
+(Prof. Kanishk J.)
+"	11:00 Am to 12:00Pm
+4:20pm to 5:10pm			"Database Management System
+(Prof. Sehar)
+Old building 404"	"Production and Operation Management
+(Prof. Kanishk J.)
+Old building 404"	"Digital Marketing
+(Prof. Kanishk J.)
+Old building 404"	"English – II
+(Prof. Cristin J.)
+"	01:00 Pm to 2:00Pm
+5:10pm to 6:10pm	"Environmental Science-II
+(Prof. Krishnaja S.)
+Old building 404"	Certification 	"CC
+(Prof. Kanishk J.)
+Old building 404"	"Database Management System
+(Prof. Sehar)
+old Building 404"	"Production and Operation Management
+(Prof. Kanishk J.)
+Old building 404"	Certification 	02:00 pm to 03:00Pm

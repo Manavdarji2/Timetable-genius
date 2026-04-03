@@ -1,0 +1,65 @@
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TimeTableGenius</title>
+    <link rel="stylesheet" href="{{url_for('static', filename='style.css')}}">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="{{ url_for('static', filename='script.js')}}"></script>
+    <link rel="shortcut icon" href="{{url_for('static',filename='icon.jpg')}}" type="image/x-icon">
+</head>
+<body>
+    <!-- Authentication Container -->
+    <div id="auth-container" class="auth-container">
+        <div class="auth-box" id="login-box">
+            <h2>Sign In</h2>
+            <form id="login-form">
+                <div class="form-group">
+                    <label for="login-email">Email</label>
+                    <input type="email" id="login-email" required>
+                </div>
+               <div class="form-group">
+                    <label for="login-password">Password</label>
+                    <input type="password" id="login-password" required>
+                </div> 
+                <button type="submit" class="btn-primary">Sign In</button>
+                <p class="form-link"><a href="/forgot-password" class="forgot-password">Forgot password?</a></p>
+                <p class="form-link">Don't have an account? <a href="/signup" id="show-signup">Sign Up</a></p>
+            </form>
+        </div>
+    </div>
+    <script>
+        document.getElementById('login-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const formData = {
+                email: document.getElementById('login-email').value,
+                password: document.getElementById('login-password').value
+            };
+
+            try {
+                const response = await fetch('/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(formData)
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    // Login successful - redirect to dashboard
+                    window.location.href = '/dashboard';
+                } else {
+                    // Login failed
+                    alert(data.error || 'Invalid credentials. Please try again.');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('An error occurred. Please try again.');
+            }
+        });
+    </script>
+</body>
+</html>

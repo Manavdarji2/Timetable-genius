@@ -1,0 +1,5 @@
+# Ignore environment variable files
+gen-ai-env/
+website/.env
+.venv
+.agents/

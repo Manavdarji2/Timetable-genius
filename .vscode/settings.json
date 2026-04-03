@@ -1,0 +1,19 @@
+{
+    "liveServer.settings.port": 5509,
+    "sqltools.connections": [
+        {
+            "mysqlOptions": {
+                "authProtocol": "default",
+                "enableSsl": "Disabled"
+            },
+            "previewLimit": 50,
+            "server": "localhost",
+            "port": 3306,
+            "driver": "MySQL",
+            "name": "Manav",
+            "database": "timetable_genius",
+            "username": "root"
+        }
+    ],
+    "postman.settings.dotenv-detection-notification-visibility": false
+}

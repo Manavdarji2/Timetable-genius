@@ -1,0 +1,228 @@
+{
+    "teachers": [
+        "Manav Viral Darji",
+        "XYZNAME"
+    ],
+    "name_batch": [
+        "15"
+    ],
+    "name_of_subclass": [
+        "AIML",
+        "CTIS"
+    ],
+    "subject_assign_to_teacher_for_which_class": {
+        "Manav Viral Darji": {
+            "AIML": {
+                "15": [
+                    "DeepLearning",
+                    "Python"
+                ]
+            },
+            "CTIS": {
+                "15": []
+            }
+        },
+        "XYZNAME": {
+            "AIML": {
+                "15": []
+            },
+            "CTIS": {
+                "15": [
+                    "CN"
+                ]
+            }
+        }
+    },
+    "classrooms_additional": [
+        {
+            "classroom_id": 1,
+            "room_number": "G3",
+            "type": "computer lab",
+            "capacity": 67,
+            "building": "New Law Building",
+            "floor": 0
+        },
+        {
+            "classroom_id": 3,
+            "room_number": "404",
+            "type": "regular",
+            "capacity": 60,
+            "building": "New Law Building",
+            "floor": 4
+        },
+        {
+            "classroom_id": 4,
+            "room_number": "FL1",
+            "type": "computer lab",
+            "capacity": 47,
+            "building": "New Law Building",
+            "floor": 2
+        },
+        {
+            "classroom_id": 5,
+            "room_number": "405",
+            "type": "regular",
+            "capacity": 60,
+            "building": "New Law Building",
+            "floor": 4
+        },
+        {
+            "classroom_id": 6,
+            "room_number": "403",
+            "type": "regular",
+            "capacity": 60,
+            "building": "New Law Building",
+            "floor": 4
+        },
+        {
+            "classroom_id": 7,
+            "room_number": "406",
+            "type": "regular",
+            "capacity": 25,
+            "building": "New Law Building",
+            "floor": 4
+        }
+    ],
+    "no_batch": 1,
+    "theory": {
+        "Manav Viral Darji": {
+            "AIML": {
+                "15": 43
+            },
+            "CTIS": {
+                "15": 0
+            }
+        },
+        "XYZNAME": {
+            "AIML": {
+                "15": 0
+            },
+            "CTIS": {
+                "15": 28
+            }
+        }
+    },
+    "practical": {
+        "Manav Viral Darji": {
+            "AIML": {
+                "15": 11
+            },
+            "CTIS": {
+                "15": 0
+            }
+        },
+        "XYZNAME": {
+            "AIML": {
+                "15": 0
+            },
+            "CTIS": {
+                "15": 0
+            }
+        }
+    },
+    "teacher": [
+        {
+            "teacher_name": "Manav Viral Darji"
+        },
+        {
+            "teacher_name": "XYZNAME"
+        }
+    ],
+    "subjects": [
+        {
+            "teacher_name": "Manav Viral Darji",
+            "subject_list": [
+                "DeepLearning",
+                "Python"
+            ]
+        },
+        {
+            "teacher_name": "XYZNAME",
+            "subject_list": [
+                "CN"
+            ]
+        }
+    ],
+    "theory_and_practical": [
+        {
+            "teacher_name": "Manav Viral Darji",
+            "subject_name": "AIML 15",
+            "subject_type": "Theory",
+            "theory_count": 43,
+            "practical_count": 0
+        },
+        {
+            "teacher_name": "Manav Viral Darji",
+            "subject_name": "AIML 15",
+            "subject_type": "Practical",
+            "theory_count": 0,
+            "practical_count": 11
+        },
+        {
+            "teacher_name": "XYZNAME",
+            "subject_name": "CTIS 15",
+            "subject_type": "Theory",
+            "theory_count": 28,
+            "practical_count": 0
+        }
+    ],
+    "classrooms": [
+        {
+            "class_name": "B.Sc AIML SEM IV",
+            "grade_name": "15",
+            "room_number": "404",
+            "students_count": 67,
+            "classroom_id": 3,
+            "classroom_type": "regular",
+            "classroom_capacity": 60
+        },
+        {
+            "class_name": "B.Sc CTIS SEM IV",
+            "grade_name": "15",
+            "room_number": "405",
+            "students_count": 20,
+            "classroom_id": 5,
+            "classroom_type": "regular",
+            "classroom_capacity": 60
+        }
+    ],
+    "classes": [
+        {
+            "class_name": "B.Sc AIML SEM IV",
+            "grade_name": "15",
+            "room_number": "404",
+            "students_count": 67,
+            "classroom_id": 3,
+            "classroom_type": "regular",
+            "classroom_capacity": 60
+        },
+        {
+            "class_name": "B.Sc CTIS SEM IV",
+            "grade_name": "15",
+            "room_number": "405",
+            "students_count": 20,
+            "classroom_id": 5,
+            "classroom_type": "regular",
+            "classroom_capacity": 60
+        }
+    ],
+    "start_date": "",
+    "end_date": "",
+    "start_time": "08:00",
+    "end_time": "16:00",
+    "lecture_duration": "45",
+    "break_duration": "10",
+    "classes_inc": [
+        {
+            "id": "1",
+            "name": "B.Sc AIML SEM IV"
+        }
+    ],
+    "break_start": "12:00",
+    "prioritize_teacher_preferences": null,
+    "max_consecutive_lec": null,
+    "class_per_day": "6",
+    "allow_gaps": "on",
+    "timetable_description": "Test-1",
+    "timetable_name": "First-Test-Time-table"
+}

@@ -1,0 +1,720 @@
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TimeTableGenius</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+    <!-- <script src="server.js" defer></script> -->
+    <link rel="shortcut icon" href="{{url_for('static',filename='icon.jpg')}}" type="image/x-icon">
+</head>
+<body>
+    <!-- Main App Container -->
+    <div id="app-container" class="app-container">
+        <!-- Sidebar Navigation -->
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <h1><i class="fas fa-calendar-alt" ></i> TimeTableGenius</h1>
+            </div>
+            <ul class="sidebar-menu">
+                <li class="sidebar-item active" data-page="dashboard-page">
+                    <i class="fas fa-tachometer-alt"></i> Dashboard
+                </li>
+                <li class="sidebar-item" data-page="teachers-page">
+                    <i class="fas fa-chalkboard-teacher"></i> Teachers
+                </li>
+                <li class="sidebar-item" data-page="classes-page">
+                    <i class="fas fa-users"></i> Classes
+                </li>
+                <li class="sidebar-item" data-page="subjects-page">
+                    <i class="fas fa-book"></i> Subjects
+                </li>
+                <li class="sidebar-item" data-page="classrooms-page">
+                    <i class="fas fa-door-open"></i> Classrooms
+                </li>
+                <li class="sidebar-item" data-page="generate-page">
+                    <i class="fas fa-magic"></i> Generate Timetable
+                </li>
+                <li class="sidebar-item" data-page="view-page">
+                    <i class="fas fa-table"></i> View Timetables
+                </li>
+                <li class="sidebar-item" data-page="absences-page">
+                    <i class="fas fa-user-clock"></i> Manage Absences
+                </li>
+                <li class="sidebar-item"
+                data-page="profile-page">
+                    <i class="fas fa-user-clock"></i>
+                    Profile
+                </li>
+            </ul>
+            
+            <div class="sidebar-footer">
+                <button id="logout-btn" type="submit" ><i class="fas fa-sign-out-alt" ></i> Logout</button>
+            </div>
+        </div>
+
+        <!-- Main Content Area -->
+        <div class="main-content">
+            <!-- Top Navigation -->
+            <div class="top-nav">
+                <!--Create a drop down manu for profile Setting add Departments in the value-->
+                <!--onclick of profile redirect to profile page on div-->
+                <div class="user-info">
+
+                    <img src="{{url_for('static', filename='image.png')}}" alt="User Avatar" id='profile-picture'class="avatar">
+                    
+                    <span id="user-name">User</span>
+                </div>
+            </div>
+
+            <!-- Page Content -->
+            <div class="page-content">
+                <!-- Dashboard Page -->
+                <div class="page" id="dashboard-page">
+                    <h2>Dashboard</h2>
+                    <div class="dashboard-stats">
+                        <div class="stat-card">
+                            <div class="stat-icon"><i class="fas fa-chalkboard-teacher"></i></div>
+                            <div class="stat-info">
+                                <h3>Teachers</h3>
+                                <p id="teacher-count"></p>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon"><i class="fas fa-users"></i></div>
+                            <div class="stat-info">
+                                <h3>Classes</h3>
+                                <p id="class-count">12</p>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon"><i class="fas fa-book"></i></div>
+                            <div class="stat-info">
+                                <h3>Subjects</h3>
+                                <p id="subject-count">32</p>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon"><i class="fas fa-door-open"></i></div>
+                            <div class="stat-info">
+                                <h3>Classrooms</h3>
+                                <p id="classroom-count">18</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="dashboard-actions">
+                        <div class="action-card" data-page="generate">
+                            <div class="action-icon"><i class="fas fa-magic"></i></div>
+                            <h3>Create New Timetable</h3>
+                            <p>Generate a new timetable with intelligent scheduling</p>
+                        </div>
+                        <div class="action-card" data-page="view">
+                            <div class="action-icon"><i class="fas fa-table"></i></div>
+                            <h3>View Timetables</h3>
+                            <p>Browse all generated timetables</p>
+                        </div>
+                        <div class="action-card" data-page="absences">
+                            <div class="action-icon"><i class="fas fa-user-clock"></i></div>
+                            <h3>Manage Absences</h3>
+                            <p>Handle teacher absences and rescheduling</p>
+                        </div>
+                    </div>
+                    <div class="recent-activity">
+                        <h3>Recent Activity</h3>
+                        <ul id="activity-list">
+                            
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Teachers Page -->
+                <div class="page" id="teachers-page" style="display: none;">
+                    <div class="page-header">
+                        <h2>Teachers</h2>
+                        <button class="btn-primary" id="add-teacher-btn"><i class="fas fa-plus"></i> Add Teacher</button>
+                    </div>
+                    <div class="search-filter">
+                        <input type="text" id="teacher-search" placeholder="Search teachers...">
+                        <select id="teacher-department-filter">
+                            <option value="All Department">All Department</option>
+                        </select>
+                    </div>
+                    <div class="data-table-container">
+                        <table class="data-table" id="teachers-table">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Email/Phone</th>
+                                    <th>Department</th>
+                                    <th>Subjects</th>
+                                    <th>Weekly Hours</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="teacher-table">
+                                <!-- Teachers will be populated dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Classes Page -->
+                <div class="page" id="classes-page" style="display: none;">
+                    <div class="page-header">
+                        <h2>Classes</h2>
+                        <button class="btn-primary" id="add-class-btn"><i class="fas fa-plus"></i> Add Class</button>
+                    </div>
+                    <div class="search-filter">
+                        <input type="text" id="class-search" placeholder="Search classes...">
+                        <select id="class-grade-filter">
+                            <option value="All">All Grades</option>
+                        </select>
+                    </div>
+                    <div class="data-table-container">
+                        <table class="data-table" id="classes-table">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Grade</th>
+                                    <th>Students</th>
+                                    <th>Classroom</th>
+                                    <th>Subjects</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="classes-table-rows">
+                                <!-- Classes will be populated dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Subjects Page -->
+                <div class="page" id="subjects-page" style="display: none;">
+                    <div class="page-header">
+                        <h2>Subjects</h2>
+                        <button class="btn-primary" id="add-subject-btn"><i class="fas fa-plus"></i> Add Subject</button>
+                    </div>
+                    <div class="search-filter">
+                        <input type="text" id="subject-search" placeholder="Search subjects...">
+                        <select id="subject-department-filter">
+                            <option value="">All Departments</option>
+                            
+                        </select>
+                    </div>
+                    <div class="data-table-container">
+                        <table class="data-table" id="subjects-table">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Department</th>
+                                    <th>Type</th>
+                                    <th>Weekly Hours</th>
+                                    <th>Teachers</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="subject-table-body">
+                                <!-- Subjects will be populated dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Classrooms Page -->
+                <div class="page" id="classrooms-page" style="display: none;">
+                    <div class="page-header">
+                        <h2>Classrooms</h2>
+                        <button class="btn-primary" id="add-classroom-btn"><i class="fas fa-plus"></i> Add Classroom</button>
+                    </div>
+                    <div class="search-filter">
+                        <input type="text" id="classroom-search" placeholder="Search classrooms...">
+                        <select id="classroom-type-filter">
+                            <option value="">All Types</option>
+                            <option value="regular">Regular</option>
+                            <option value="lab">Laboratory</option>
+                            <option value="computer">Computer Lab</option>
+                            <option value="gym">Gymnasium</option>
+                        </select>
+                    </div>
+                    <div class="data-table-container">
+                        <table class="data-table" id="classrooms-table">
+                            <thead>
+                                <tr>
+                                    <th>Room Name/No.</th>
+                                    <th>Type</th>
+                                    <th>Capacity</th>
+                                    <th>Building</th>
+                                    <th>Floor</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id='classroom-table'>
+                                <!-- Classrooms will be populated dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Generate Timetable Page -->
+                <div class="page" id="generate-page" style="display: none;">
+                    <div class="page-header">
+                        <h2>Generate Timetable</h2>
+                    </div>
+                    <div class="timetable-form">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="timetable-name">Timetable Name</label>
+                                <input type="text" id="timetable-name" placeholder="e.g., Fall Semester 2025">
+                            </div>
+                            <div class="form-group">
+                                <label for="timetable-description">Description (Optional)</label>
+                                <input type="text" id="timetable-description" placeholder="Brief description">
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="start-date">Start Date</label>
+                                <input type="date" id="start-date">
+                            </div>
+                            <div class="form-group">
+                                <label for="end-date">End Date</label>
+                                <input type="date" id="end-date">
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="school-start-time">School Start Time</label>
+                                <input type="time" id="school-start-time" value="08:00">
+                            </div>
+                            <div class="form-group">
+                                <label for="school-end-time">School End Time</label>
+                                <input type="time" id="school-end-time" value="16:00">
+                            </div>
+                            <div class="form-group">
+                                <label for="lecture-duration">Lecture Duration (minutes)</label>
+                                <input type="number" id="lecture-duration" value="45" min="30" max="120">
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="break-duration">Break Duration (minutes)</label>
+                                <input type="number" id="break-duration" value="10" min="5" max="30">
+                            </div>
+                            <div class="form-group">
+                                <label for="lunch-break-start">Lunch Break Start</label>
+                                <input type="time" id="lunch-break-start" value="12:00">
+                            </div>
+                        </div>
+
+                        <div class="form-section">
+                            <h3>Classes to Include</h3>
+                            <div class="checkbox-group" id="classes-checkbox-group">
+                                <!-- Dynamically populated -->
+                            </div>
+                        </div>
+                        <!--
+                        I want to display the how many class should be in a day
+                        -->
+                        <div class="form-section">
+                            <h3>Class Distribution</h3>
+                            <div class="form-group">
+                                <label for="classes-per-day">Number of Classes per Day</label>
+                                <input type="number" id="classes-per-day" value="6" min="1" max="10">
+                            </div>
+                        </div>
+                        <div class="form-section">
+                            <h3>Advanced Options</h3>
+                            <div class="form-toggle">
+                                <label for="allow-gaps">Allow gaps in teacher schedules</label>
+                                <label class="toggle">
+                                    <input type="checkbox" id="allow-gaps">
+                                    <span class="slider"></span>
+                                </label>
+                            </div>
+                            <div class="form-toggle">
+                                <label for="prioritize-teacher-prefs">Prioritize teacher preferences</label>
+                                <label class="toggle">
+                                    <input type="checkbox" id="prioritize-teacher-prefs" checked>
+                                    <span class="slider"></span>
+                                </label>
+                            </div>
+                            <div class="form-toggle">
+                                <label for="max-consec-lectures">Limit consecutive lectures</label>
+                                <label class="toggle">
+                                    <input type="checkbox" id="max-consec-lectures" checked>
+                                    <span class="slider"></span>
+                                </label>
+                            </div>
+                            <div class="form-group" id="consec-lectures-group">
+                                <label for="max-consec-lectures-value">Maximum consecutive lectures</label>
+                                <input type="number" id="max-consec-lectures-value" value="3" min="1" max="6">
+                            </div>
+                        </div>
+
+                        <div class="form-buttons">
+                            <button class="btn-secondary" id="reset-form-btn">Reset</button>
+                            <button class="btn-primary" id="generate-timetable-btn"><i class="fas fa-magic"></i> Generate Timetable</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- View Timetables Page -->
+                <div class="page" id="view-page" style="display: none;">
+                    <div class="page-header">
+                        <h2>View Timetables</h2>
+                        <div class="view-actions">
+                            <button class="btn-secondary" id="export-excel-btn"><i class="fas fa-file-excel"></i> Export to Excel</button>
+                            <button class="btn-secondary" id="print-timetable-btn"><i class="fas fa-print"></i> Print</button>
+                        </div>
+                    </div>
+
+                    <div class="timetable-filters">
+                        <div class="filter-group">
+                            <label for="timetable-select">Select Timetable:</label>
+                            <select id="timetable-select">
+                                <option value="1">Fall Semester 2025</option>
+                                <option value="2">Spring Semester 2024</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label for="view-type">View By:</label>
+                            <select id="view-type">
+                                <option value="class">Class</option>
+                                <option value="teacher">Teacher</option>
+                                <option value="classroom">Classroom</option>
+                            </select>
+                        </div>
+                        <div class="filter-group" id="class-filter-group">
+                            <label for="class-filter">Select Class:</label>
+                            <select id="class-filter">
+                                <option value="all">All Classes</option>
+                                <!-- Dynamically populated -->
+                            </select>
+                        </div>
+                        <div class="filter-group" id="teacher-filter-group" style="display: none;">
+                            <label for="teacher-filter">Select Teacher:</label>
+                            <select id="teacher-filter">
+                                <option value="all">All Teachers</option>
+                                <!-- Dynamically populated -->
+                            </select>
+                        </div>
+                        <div class="filter-group" id="classroom-filter-group" style="display: none;">
+                            <label for="classroom-filter">Select Classroom:</label>
+                            <select id="classroom-filter">
+                                <option value="all">All Classrooms</option>
+                                <!-- Dynamically populated -->
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="timetable-container">
+                        <table class="timetable" id="timetable-view">
+                            <thead>
+                                <tr>
+                                    <th>Time</th>
+                                    <th>Monday</th>
+                                    <th>Tuesday</th>
+                                    <th>Wednesday</th>
+                                    <th>Thursday</th>
+                                    <th>Friday</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Dynamically populated -->
+                            </tbody>
+                        </table>
+                    </div>
+                    <!--<div class="legend">
+                        <div class="legend-item">
+                            <div class="legend-color theory-color"></div>
+                            <span>Theory</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-color practical-color"></div>
+                            <span>Practical</span>
+                        </div>
+                    </div>-->
+                </div>
+                
+                <!-- Manage Absences Page -->
+                <div class="page" id="absences-page" style="display: none;">
+                    <div class="page-header">
+                        <h2>Manage Absences</h2>
+                        <button class="btn-primary" id="add-absence-btn"><i class="fas fa-plus"></i> Record Absence</button>
+                    </div>
+                    
+                    <div class="absences-filters">
+                        <div class="filter-group">
+                            <label for="absence-date-filter">Filter by Date:</label>
+                            <input type="date" id="absence-date-filter">
+                        </div>
+                        <div class="filter-group">
+                            <label for="absence-teacher-filter">Filter by Teacher:</label>
+                            <select id="absence-teacher-filter">
+                                <option value="all">All Teachers</option>
+                                <!-- Dynamically populated -->
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label for="absence-status-filter">Filter by Status:</label>
+                            <select id="absence-status-filter">
+                                <option value="all">All Statuses</option>
+                                <option value="pending">Pending</option>
+                                <option value="resolved">Resolved</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="data-table-container">
+                        <table class="data-table" id="absences-table">
+                            <thead>
+                                <tr>
+                                    <th>Teacher</th>
+                                    <th>Date</th>
+                                    <th>Reason</th>
+                                    <th>Affected Classes</th>
+                                    <th>Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Absences will be populated dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="absence-solutions" id="absence-solutions" style="display:none;">
+                        <h3>Resolution Options</h3>
+                        <div class="solutions-container">
+                            <div class="solution-card">
+                                <h4>Auto-Suggest</h4>
+                                <p>Let our AI suggest the best replacement options</p>
+                                <button class="btn-secondary" id="auto-suggest-btn">Generate Suggestions</button>
+                            </div>
+                            <div class="solution-card">
+                                <h4>Manual Assignment</h4>
+                                <p>Manually assign replacement teachers</p>
+                                <button class="btn-secondary" id="manual-assign-btn">Assign Manually</button>
+                            </div>
+                            <div class="solution-card">
+                                <h4>Reschedule Classes</h4>
+                                <p>Move affected classes to a different time</p>
+                                <button class="btn-secondary" id="reschedule-btn">Reschedule</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Replace the empty profile page div with this content -->
+                <div class="page" id="profile-page" style="display:none;">
+                    <div class="page-header">
+                        <h2>My Profile</h2>
+                        <button class="btn-primary" id="edit-profile-btn" onclick=''><i class="fas fa-edit"></i> Edit Profile</button>
+                    </div>
+
+                    <div class="profile-container">
+                        <div class="profile-header">
+                            <div class="profile-avatar">
+                                <img src="{{url_for('static', filename='image.png')}}" id="profile-picture">
+                                <div class="profile-avatar-overlay" id="change-avatar-btn" onclick='ImageUploadANY()'>
+                                    <i class="fas fa-camera"></i>
+                                </div>
+                            </div>
+                            <div class="profile-title">
+                                <h3 id="profile-name">User</h3>
+                                <span id="profile-role">Administrator</span>
+                            </div>
+                        </div>
+
+                        <div class="profile-content">
+                            <div class="profile-section">
+                                <h3><i class="fas fa-user"></i> Personal Information</h3>
+                                <div class="profile-info-grid">
+                                    <div class="profile-info-item">
+                                        <label>Full Name</label>
+                                        <p id="full-name">User</p>
+                                    </div>
+                                    <div class="profile-info-item">
+                                        <label>Email</label>
+                                        <p id="email">user@example.com</p>
+                                    </div>
+                                    <div class="profile-info-item">
+                                        <label>Phone</label>
+                                        <p id="phone">+91 0000-0000</p>
+                                    </div>
+                                    <div class="profile-info-item">
+                                        <label>Date of Birth</label>
+                                        <p id="dob">DD/MM/YYYY</p>
+                                    </div>
+                                    <div class="profile-info-item">
+                                        <label>Department</label>
+                                        <p id="department">none</p>
+                                    </div>
+                                    <div class="profile-info-item">
+                                        <label>Employee ID</label>
+                                        <p id="employee-id">none</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="profile-section">
+                                <h3><i class="fas fa-key"></i> Account Security</h3>
+                                <div class="profile-actions">
+                                    <button class="btn-secondary" id="change-password-btn" >
+                                        <i class="fas fa-lock"></i> Change Password
+                                    </button>
+                                    <button class="btn-secondary" id="enable-2fa-btn">
+                                        <i class="fas fa-shield-alt"></i> Enable Two-Factor Authentication
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="profile-section">
+                                <h3><i class="fas fa-sliders-h"></i> Preferences</h3>
+                                <div class="profile-preferences">
+                                    <div class="form-toggle">
+                                        <label for="email-notifications">Email Notifications</label>
+                                        <label class="toggle">
+                                            <input type="checkbox" id="email-notifications" checked>
+                                            <span class="slider"></span>
+                                        </label>
+                                    </div>
+                                    <div class="form-toggle">
+                                        <label for="dark-mode">Dark Mode</label>
+                                        <label class="toggle">
+                                            <input type="checkbox" id="dark-mode">
+                                            <span class="slider" onclick="toggleDarkMode()"></span>
+                                        </label>
+                                    </div>
+                                    <div class="form-toggle">
+                                        <label for="compact-view">Compact View</label>
+                                        <label class="toggle">
+                                            <input type="checkbox" id="compact-view">
+                                            <span class="slider"></span>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="profile-section">
+                                <h3><i class="fas fa-history"></i> Recent Activity</h3>
+                                <div class="profile-activity-list">
+                                    <div class="activity-item">
+                                        <div class="activity-icon"><i class="fas fa-calendar-alt"></i></div>
+                                        <div class="activity-details">
+                                            <p>Generated new timetable <strong>"Fall Semester 2025"</strong></p>
+                                            <span class="activity-time">Today, 10:23 AM</span>
+                                        </div>
+                                    </div>
+                                    <div class="activity-item">
+                                        <div class="activity-icon"><i class="fas fa-user-edit"></i></div>
+                                        <div class="activity-details">
+                                            <p>Updated profile information</p>
+                                            <span class="activity-time">Yesterday, 2:45 PM</span>
+                                        </div>
+                                    </div>
+                                    <div class="activity-item">
+                                        <div class="activity-icon"><i class="fas fa-user-clock"></i></div>
+                                        <div class="activity-details">
+                                            <p>Recorded absence for <strong>Sarah Johnson</strong></p>
+                                            <span class="activity-time">Mar 10, 9:15 AM</span>
+                                        </div>
+                                    </div>
+                                    <div class="activity-item">
+                                        <div class="activity-icon"><i class="fas fa-table"></i></div>
+                                        <div class="activity-details">
+                                            <p>Viewed timetable for <strong>Class 10B</strong></p>
+                                            <span class="activity-time">Mar 8, 11:30 AM</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Add these modals for the profile page actions -->
+                <div class="modal" id="edit-profile-modal" style="display: none;">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h3>Edit Profile</h3>
+                            <button class="close-btn">&times;</button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="form-group">
+                                <label for="edit-full-name">Full Name</label>
+                                <input type="text" id="edit-full-name" value="User">
+                            </div>
+                            <div class="form-group">
+                                <label for="edit-email">Email</label>
+                                <input type="email" id="edit-email" value="user@example.com">
+                            </div>
+                            <div class="form-group">
+                                <label for="edit-phone">Phone</label>
+                                <input type="tel" id="edit-phone" value="+91 0000-00000">
+                            </div>
+                            <div class="form-group">
+                                <label for="edit-dob">Date of Birth</label>
+                                <input type="date" id="edit-dob">
+                            </div>
+                            <div class="form-group">
+                                <label for="edit-department">Department</label>
+                                <select id="edit-department">
+                                    <option value="math">Mathematics</option>
+                                    <option value="science">Science</option>
+                                    <option value="english">English</option>
+                                    <option value="history">History</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button class="btn-secondary">Cancel</button>
+                            <button class="btn-primary">Save Changes</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    
+    <!-- Modal Templates -->
+    <div class="modal" id="modal-container" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modal-title">Modal Title</h3>
+                <button class="close-btn" id="modal-close">&times;</button>
+            </div>
+            <div class="modal-body" id="modal-body">
+                <!-- Modal content will be dynamically inserted here -->
+            </div>
+            <div class="modal-footer" id="modal-footer">
+                <button class="btn-secondary" id="modal-cancel">Cancel</button>
+                <button class="btn-primary" id="modal-save">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loading-overlay" style="display: none;">
+        <div class="loading-spinner"></div>
+        <p id="loading-text">Generating timetable...</p>
+    </div>
+
+    <!-- Success Alert -->
+    <div class="alert success" id="success-alert" style="display: none;">
+        <i class="fas fa-check-circle"></i>
+        <span id="success-message">Operation completed successfully!</span>
+    </div>
+    
+    <!-- Error Alert -->
+    <div class="alert error" id="error-alert" style="display: none;">
+        <i class="fas fa-exclamation-circle"></i>
+        <span id="error-message">An error occurred. Please try again.</span>
+    </div>
+</body>
+</html>

@@ -1,0 +1,153 @@
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TimeTableGenius</title>
+    
+    <style>
+        :root {
+            --primary-color: #3498db;
+            --primary-dark: #2980b9;
+            --secondary-color: #2c3e50;
+            --accent-color: #e74c3c;
+            --success-color: #2ecc71;
+            --warning-color: #f39c12;
+            --danger-color: #e74c3c;
+            --light-gray: #f5f5f5;
+            --medium-gray: #e0e0e0;
+            --dark-gray: #888888;
+            --text-color: #333333;
+            --sidebar-width: 250px;
+            --border-radius: 4px;
+            --box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            --transition: all 0.3s ease;
+        }
+        
+        body {
+            background-color: #f9f9f9;
+            color: var(--text-color);
+            line-height: 1.6;
+        }
+        
+        .auth-box {
+            max-width: 400px;
+            margin: 50px auto;
+            padding: 20px;
+            background: white;
+            border-radius: var(--border-radius);
+            box-shadow: var(--box-shadow);
+        }
+        
+        h2 {
+            text-align: center;
+            color: var(--primary-color);
+        }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+        }
+        
+        input[type="text"],
+        input[type="email"],
+        input[type="password"],
+        select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid var(--medium-gray);
+            border-radius: var(--border-radius);
+        }
+        
+        .btn-primary {
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 10px;
+            border-radius: var(--border-radius);
+            cursor: pointer;
+            width: 100%;
+        }
+        
+        .btn-primary:hover {
+            background-color: var(--primary-dark);
+        }
+        
+        .form-link {
+            text-align: center;
+            margin-top: 10px;
+        }        
+     </style>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="{{url_for('static', filename='script.js')}}"></script>
+    <link rel="shortcut icon" href="{{ url_for('static',filename='icon.jpg')}}" type="image/x-icon">
+    <style rel="stylesheet" src="{{url_for('static', filename='style.css')}}" ></style>
+</head>
+<body>
+    <div class="auth-box" id="signup-box">
+        <h2>Sign Up</h2>
+        <form id="signup-form" >
+            <div class="form-group">
+                <label for="signup-name">Full Name</label>
+                <input type="text" id="signup-name" required>
+            </div>
+            <div class="form-group">
+                <label for="signup-email">Email</label>
+                <input type="email" id="signup-email" required>
+            </div>
+            <div class="form-group">
+                <label for="signup-password">Password</label>
+                <input type="password" id="signup-password" required>
+            </div>
+            <div class="form-group">
+                <label for="signup-role">Role</label>
+                <select id="signup-role" required>
+                    <option value="admin">Administrator</option>
+                    <option value="teacher">Teacher</option>
+                </select>
+            </div>
+            <button type="submit" class="btn-primary">Sign Up</button>
+            <p class="form-link">Already have an account? <a href="/login" id="show-login">Sign In</a></p>
+        </form>
+    </div>
+    <script>
+        document.getElementById('signup-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const formData = {
+                name: document.getElementById('signup-name').value,
+                email: document.getElementById('signup-email').value,
+                password: document.getElementById('signup-password').value,
+                role: document.getElementById('signup-role').value
+            };
+        
+            try {
+                const response = await fetch('/signup', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(formData)
+                });
+        
+                const data = await response.json();
+        
+                if (response.status === 201) {
+                    // Registration successful
+                    alert('Registration successful! Please login.');
+                    window.location.href = '/dash';  // Redirect to login page
+                } else {
+                    // Registration failed
+                    alert(data.error || 'Registration failed. Please try again.');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('An error occurred. Please try again.');
+            }
+        });
+        </script>
+</body>
+</html>

@@ -1,0 +1,164 @@
+{
+    "AIML 15": {
+        "Monday": {
+            "8:00am to 8:45am": {
+                "subject": "DeepLearning Lab (Manav Viral Darji)",
+                "classroom": "G3",
+                "type": "Practical"
+            },
+            "8:45am to 9:30am": {
+                "subject": "Python (Manav Viral Darji)",
+                "classroom": "404",
+                "type": "Theory"
+            },
+            "9:30am to 10:15am": {
+                "subject": "DeepLearning (Manav Viral Darji)",
+                "classroom": "404",
+                "type": "Theory"
+            },
+            "10:15am to 11:00am": {
+                "subject": "DeepLearning Lab (Manav Viral Darji)",
+                "classroom": "G3",
+                "type": "Practical"
+            },
+            "11:00am to 11:45am": {
+                "subject": "Python Lab (Manav Viral Darji)",
+                "classroom": "G3",
+                "type": "Practical"
+            },
+            "12:10pm to 12:55pm": {
+                "subject": "DeepLearning Lab (Manav Viral Darji)",
+                "classroom": "G3",
+                "type": "Practical"
+            }
+        },
+        "Tuesday": {
+            "8:00am to 8:45am": {
+                "subject": "Python (Manav Viral Darji)",
+                "classroom": "404",
+                "type": "Theory"
+            },
+            "8:45am to 9:30am": {
+                "subject": "DeepLearning (Manav Viral Darji)",
+                "classroom": "404",
+                "type": "Theory"
+            },
+            "9:30am to 10:15am": {
+                "subject": "Python (Manav Viral Darji)",
+                "classroom": "404",
+                "type": "Theory"
+            },
+            "10:15am to 11:00am": {
+                "subject": "DeepLearning Lab (Manav Viral Darji)",
+                "classroom": "G3",
+                "type": "Practical"
+            },
+            "11:00am to 11:45am": {
+                "subject": "Python Lab (Manav Viral Darji)",
+                "classroom": "G3",
+                "type": "Practical"
+            },
+            "12:10pm to 12:55pm": {
+                "subject": "DeepLearning Lab (Manav Viral Darji)",
+                "classroom": "G3",
+                "type": "Practical"
+            }
+        },
+        "Wednesday": {
+            "8:00am to 8:45am": {
+                "subject": "DeepLearning (Manav Viral Darji)",
+                "classroom": "404",
+                "type": "Theory"
+            },
+            "8:45am to 9:30am": {
+                "subject": "Python (Manav Viral Darji)",
+                "classroom": "404",
+                "type": "Theory"
+            },
+            "9:30am to 10:15am": {
+                "subject": "Python (Manav Viral Darji)",
+                "classroom": "404",
+                "type": "Theory"
+            },
+            "10:15am to 11:00am": {
+                "subject": "DeepLearning Lab (Manav Viral Darji)",
+                "classroom": "G3",
+                "type": "Practical"
+            },
+            "11:00am to 11:45am": {
+                "subject": "Python Lab (Manav Viral Darji)",
+                "classroom": "G3",
+                "type": "Practical"
+            },
+            "12:10pm to 12:55pm": {
+                "subject": "DeepLearning Lab (Manav Viral Darji)",
+                "classroom": "G3",
+                "type": "Practical"
+            }
+        },
+        "Thursday": {
+            "8:00am to 8:45am": {
+                "subject": "DeepLearning (Manav Viral Darji)",
+                "classroom": "404",
+                "type": "Theory"
+            },
+            "8:45am to 9:30am": {
+                "subject": "Python (Manav Viral Darji)",
+                "classroom": "404",
+                "type": "Theory"
+            },
+            "9:30am to 10:15am": {
+                "subject": "DeepLearning Lab (Manav Viral Darji)",
+                "classroom": "G3",
+                "type": "Practical"
+            },
+            "10:15am to 11:00am": {
+                "subject": "Python Lab (Manav Viral Darji)",
+                "classroom": "G3",
+                "type": "Practical"
+            },
+            "11:00am to 11:45am": {
+                "subject": "DeepLearning (Manav Viral Darji)",
+                "classroom": "404",
+                "type": "Theory"
+            },
+            "12:10pm to 12:55pm": {
+                "subject": "Python (Manav Viral Darji)",
+                "classroom": "404",
+                "type": "Theory"
+            }
+        },
+        "Friday": {
+            "8:00am to 8:45am": {
+                "subject": "DeepLearning (Manav Viral Darji)",
+                "classroom": "404",
+                "type": "Theory"
+            },
+            "8:45am to 9:30am": {
+                "subject": "Python (Manav Viral Darji)",
+                "classroom": "404",
+                "type": "Theory"
+            },
+            "9:30am to 10:15am": {
+                "subject": "DeepLearning Lab (Manav Viral Darji)",
+                "classroom": "G3",
+                "type": "Practical"
+            },
+            "10:15am to 11:00am": {
+                "subject": "Python Lab (Manav Viral Darji)",
+                "classroom": "G3",
+                "type": "Practical"
+            },
+            "11:00am to 11:45am": {
+                "subject": "DeepLearning (Manav Viral Darji)",
+                "classroom": "404",
+                "type": "Theory"
+            },
+            "12:10pm to 12:55pm": {
+                "subject": "Python (Manav Viral Darji)",
+                "classroom": "404",
+                "type": "Theory"
+            }
+        }
+    }
+}
