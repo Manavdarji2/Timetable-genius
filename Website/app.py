@@ -58,10 +58,16 @@ def login_required(f):
 # Routes
 @app.route('/')
 def index():
-    return redirect(url_for('login'))
+    # Already logged in → go straight to dashboard
+    if 'user_id' in session:
+        return redirect(url_for('dashboard'))
+    return render_template('landing.html')
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
+    # Already logged in → skip login page
+    if request.method == 'GET' and 'user_id' in session:
+        return redirect(url_for('dashboard'))
     if request.method == 'POST':
         data = request.get_json()
         
@@ -1792,6 +1798,101 @@ def add_absence():
     finally:
         cur.close()
         mysql.close()
+
+
+@app.route('/api/absences/<int:absence_id>', methods=['DELETE'])
+@login_required
+def delete_absence(absence_id: int):
+    mysql = get_mysql_connection()
+    cur = mysql.cursor(dictionary=True)
+    try:
+        # Ensure the absence belongs to a teacher owned by this user
+        cur.execute("""
+            SELECT a.absence_id FROM teacher_absences a
+            JOIN teachers t ON a.teacher_id = t.teacher_id
+            WHERE a.absence_id = %s AND t.user_id = %s
+        """, (absence_id, session.get('user_id')))
+        if not cur.fetchone():
+            return jsonify({'error': 'Absence not found or not authorized'}), 404
+
+        cur.execute("DELETE FROM teacher_absences WHERE absence_id = %s", (absence_id,))
+        mysql.commit()
+
+        # Activity log
+        cur.execute("""
+            INSERT INTO activity (user_id, action_type, description, entity_type, entity_id)
+            VALUES (%s, 'DELETE', 'Deleted teacher absence', 'absence', %s)
+        """, (session.get('user_id'), absence_id))
+        mysql.commit()
+
+        return jsonify({'message': 'Absence deleted successfully'})
+    except Exception as e:
+        mysql.rollback()
+        app.logger.error(f"Error deleting absence {absence_id}: {e}")
+        return jsonify({'error': 'Failed to delete absence'}), 500
+    finally:
+        cur.close()
+        mysql.close()
+
+
+@app.route('/api/absences/<int:absence_id>', methods=['PUT'])
+@login_required
+def update_absence(absence_id: int):
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'Request body required'}), 400
+
+    allowed_statuses = {'pending', 'resolved'}
+    new_status = data.get('status')
+    if new_status is not None and new_status not in allowed_statuses:
+        return jsonify({'error': f'Invalid status. Allowed: {allowed_statuses}'}), 422
+
+    mysql = get_mysql_connection()
+    cur = mysql.cursor(dictionary=True)
+    try:
+        # Ownership check
+        cur.execute("""
+            SELECT a.absence_id FROM teacher_absences a
+            JOIN teachers t ON a.teacher_id = t.teacher_id
+            WHERE a.absence_id = %s AND t.user_id = %s
+        """, (absence_id, session.get('user_id')))
+        if not cur.fetchone():
+            return jsonify({'error': 'Absence not found or not authorized'}), 404
+
+        # Build update dynamically for only provided fields
+        fields, values = [], []
+        if new_status is not None:
+            fields.append("status = %s")
+            values.append(new_status)
+        if 'reason' in data:
+            fields.append("reason = %s")
+            values.append(data['reason'])
+
+        if not fields:
+            return jsonify({'error': 'No updatable fields provided'}), 400
+
+        values.append(absence_id)
+        cur.execute(
+            f"UPDATE teacher_absences SET {', '.join(fields)} WHERE absence_id = %s",
+            values
+        )
+        mysql.commit()
+
+        cur.execute("""
+            INSERT INTO activity (user_id, action_type, description, entity_type, entity_id)
+            VALUES (%s, 'UPDATE', 'Updated teacher absence', 'absence', %s)
+        """, (session.get('user_id'), absence_id))
+        mysql.commit()
+
+        return jsonify({'message': 'Absence updated successfully'})
+    except Exception as e:
+        mysql.rollback()
+        app.logger.error(f"Error updating absence {absence_id}: {e}")
+        return jsonify({'error': 'Failed to update absence'}), 500
+    finally:
+        cur.close()
+        mysql.close()
+
 
 @app.route('/api/grades', methods=['GET'])
 @login_required

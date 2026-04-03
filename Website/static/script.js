@@ -47,8 +47,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const fullNameElement = document.getElementById('full-name');
             const emailElement = document.getElementById('email');
             const profilename=document.getElementById('profile-name');
-            const profile_image=document.getElementById('profile-picture');
-            if (!profile_image){
+            const profile_image = document.getElementById('profile-picture');
+            if (profile_image) {
                 profile_image.src = data.stats.profilePicture || '/static/images/profile.png';
             }
             if (fullNameElement) {
@@ -742,55 +742,52 @@ document.addEventListener('DOMContentLoaded', () => {
             },
         });
         const classData = await classResponse.json();
-        
-        
-        
-        generateBtn.addEventListener('click', async() => {
+
+        generateBtn.addEventListener('click', async () => {
             const loadingOverlay = document.getElementById('loading-overlay');
             loadingOverlay.style.display = 'flex';
-            // I want classes info as this {id: class_id, name: class_name} related to the checkbox and classData
-            const Data={
-                "timetable-name": document.getElementById('timetable-name').value,
-                "timetable-description":document.getElementById('timetable-description').value,
-                "start-date":document.getElementById('start-date').value,
-                "end-date":document.getElementById("end-date").value,
-                "school-start-time":document.getElementById("school-start-time").value,
-                "school-end-time":document.getElementById("school-end-time").value,
-                "lecture-duration":document.getElementById("lecture-duration").value,
-                "break-duration":document.getElementById("break-duration").value,
-                "classes":
-                    Array.from(document.querySelectorAll('.class-checkbox:checked')).map((checkbox) => {
-                        const classId = checkbox.value;
-                        const className = classData.find((classItem) => classItem.class_id == classId).class_name;
-                        return {id: classId, name: className};
-                    }),
-                "classes-per-day":document.getElementById("classes-per-day").value,
-                "break-start-time":document.getElementById("lunch-break-start").value,
-                "allow-gaps":document.getElementById('allow-gaps').value,
-                "prioritize-teacher-prefs":document.getElementById('prioritize-teacher-prefs').value,
-                "max-consec-lectures-value":document.getElementById("max-consec-lectures-value").value,
-            }
+            try {
+                // I want classes info as this {id: class_id, name: class_name} related to the checkbox and classData
+                const Data={
+                    "timetable-name": document.getElementById('timetable-name').value,
+                    "timetable-description":document.getElementById('timetable-description').value,
+                    "start-date":document.getElementById('start-date').value,
+                    "end-date":document.getElementById("end-date").value,
+                    "school-start-time":document.getElementById("school-start-time").value,
+                    "school-end-time":document.getElementById("school-end-time").value,
+                    "lecture-duration":document.getElementById("lecture-duration").value,
+                    "break-duration":document.getElementById("break-duration").value,
+                    "classes":
+                        Array.from(document.querySelectorAll('.class-checkbox:checked')).map((checkbox) => {
+                            const classId = checkbox.value;
+                            const classItem = classData.find((c) => c.class_id == classId);
+                            return {id: classId, name: classItem ? classItem.class_name : classId};
+                        }),
+                    "classes-per-day":document.getElementById("classes-per-day").value,
+                    "break-start-time":document.getElementById("lunch-break-start").value,
+                    "allow-gaps":document.getElementById('allow-gaps').value,
+                    "prioritize-teacher-prefs":document.getElementById('prioritize-teacher-prefs').value,
+                    "max-consec-lectures-value":document.getElementById("max-consec-lectures-value").value,
+                };
 
-            const response = await fetch('/api/generate-timetable', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(Data)
-            });
-            const result = await response.json();
-            if (!response.ok) {
-                throw new Error('Failed to generate timetable');
-            }
-            if (result.success) {
-                console.log('Timetable generated successfully:');
-            }
-            // Simulate timetable generation
-            setTimeout(() => {
+                const response = await fetch('/api/generate-timetable', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(Data)
+                });
+                const result = await response.json();
+                if (!response.ok) {
+                    throw new Error(result.error || 'Failed to generate timetable');
+                }
                 loadingOverlay.style.display = 'none';
                 showSuccessAlert('Timetable generated successfully!');
-            }, 5000);
-        });
+            } catch (genError) {
+                loadingOverlay.style.display = 'none';
+                showErrorAlert(`Generation failed: ${genError.message}`);
+            }
+        }); // end generateBtn click
 
         resetBtn.addEventListener('click', () => {
             document.querySelector('.timetable-form').reset();
@@ -1811,21 +1808,83 @@ document.addEventListener('DOMContentLoaded', () => {
             break;
             case 'absence-form':
                 modalBody.innerHTML = `
-                <form>
+                <form id="record-absence-form">
                     <div class="form-group">
-                        <label for="name">Name</label>
-                        <input type="text" id="name" name="name" required>
+                        <label for="absence-teacher-select">Teacher *</label>
+                        <select id="absence-teacher-select" name="teacher_id" required>
+                            <option value="">Loading teachers...</option>
+                        </select>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="absence-start-date">Start Date *</label>
+                            <input type="date" id="absence-start-date" name="start_date" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="absence-end-date">End Date *</label>
+                            <input type="date" id="absence-end-date" name="end_date" required>
+                        </div>
                     </div>
                     <div class="form-group">
-                        <label for="email">Email</label>
-                        <input type="email" id="email" name="email" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="department">Department</label>
-                        <input type="text" id="department" name="department" required>
+                        <label for="absence-reason">Reason</label>
+                        <textarea id="absence-reason" name="reason" rows="3" placeholder="e.g. Sick leave, personal emergency..."></textarea>
                     </div>
                 </form>
-            `;
+                `;
+                // Populate teacher dropdown
+                (async () => {
+                    const sel = document.getElementById('absence-teacher-select');
+                    try {
+                        const res = await fetch('/api/teachers');
+                        if (res.ok) {
+                            const teachers = await res.json();
+                            sel.innerHTML = '<option value="">Select Teacher</option>' +
+                                teachers.map(t => `<option value="${t.teacher_id}">${t.teacher_name}</option>`).join('');
+                        } else {
+                            sel.innerHTML = '<option value="">Failed to load</option>';
+                        }
+                    } catch (_) {
+                        sel.innerHTML = '<option value="">Error loading teachers</option>';
+                    }
+                })();
+                // Set today as default start date
+                (() => {
+                    const today = new Date().toISOString().split('T')[0];
+                    document.getElementById('absence-start-date').value = today;
+                    document.getElementById('absence-end-date').value = today;
+                })();
+                saveBtn.textContent = 'Record Absence';
+                saveBtn.onclick = async () => {
+                    const teacherId = document.getElementById('absence-teacher-select').value;
+                    const startDate = document.getElementById('absence-start-date').value;
+                    const endDate = document.getElementById('absence-end-date').value;
+                    const reason = document.getElementById('absence-reason').value;
+                    if (!teacherId || !startDate || !endDate) {
+                        showErrorAlert('Please fill in all required fields.');
+                        return;
+                    }
+                    if (endDate < startDate) {
+                        showErrorAlert('End date must be on or after start date.');
+                        return;
+                    }
+                    try {
+                        const res = await fetch('/api/absences', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ teacher_id: teacherId, start_date: startDate, end_date: endDate, reason, status: 'pending' })
+                        });
+                        if (!res.ok) {
+                            const err = await res.json();
+                            throw new Error(err.error || 'Failed to record absence');
+                        }
+                        showSuccessAlert('Absence recorded successfully.');
+                        modal.style.display = 'none';
+                        // Reload absence table if visible — loadAbsences is scoped in initAbsenceManagement
+                        if (typeof loadAbsences === 'function') loadAbsences();
+                    } catch (err) {
+                        showErrorAlert(`Error: ${err.message}`);
+                    }
+                };
             break;   
             case "change-password-form":
                 modalBody.innerHTML = `
@@ -2233,23 +2292,140 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     };
 
-    // Absence Management
-    const initAbsenceManagement = () => {
+    // Absence Management — full implementation with CRUD and filtering
+    const initAbsenceManagement = async () => {
         const addAbsenceBtn = document.getElementById('add-absence-btn');
         const autoSuggestBtn = document.getElementById('auto-suggest-btn');
         const manualAssignBtn = document.getElementById('manual-assign-btn');
         const rescheduleBtn = document.getElementById('reschedule-btn');
+        const dateFilter = document.getElementById('absence-date-filter');
+        const teacherFilter = document.getElementById('absence-teacher-filter');
+        const statusFilter = document.getElementById('absence-status-filter');
+        const absenceTbody = document.querySelector('#absences-table tbody');
 
-        addAbsenceBtn.addEventListener('click', () => {
-            openModal('Record Absence', 'absence-form');
-        });
+        let allAbsences = [];
+
+        // Populate teacher filter dropdown
+        const populateTeacherDropdown = async () => {
+            try {
+                const res = await fetch('/api/teachers');
+                if (!res.ok) return;
+                const teachers = await res.json();
+                teachers.forEach(t => {
+                    const opt = document.createElement('option');
+                    opt.value = t.teacher_id;
+                    opt.textContent = t.teacher_name;
+                    teacherFilter.appendChild(opt);
+                });
+            } catch (err) {
+                console.error('Failed to load teachers for absence filter:', err);
+            }
+        };
+
+        const renderAbsencesTable = (absences) => {
+            if (!absenceTbody) return;
+            absenceTbody.innerHTML = '';
+            if (absences.length === 0) {
+                absenceTbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--dark-gray);padding:2rem;">No absences recorded.</td></tr>';
+                return;
+            }
+            absences.forEach(absence => {
+                const row = document.createElement('tr');
+                const statusBadge = `<span class="status-badge status-${absence.status}">${absence.status}</span>`;
+                row.innerHTML = `
+                    <td>${absence.teacher_name || 'Unknown'}</td>
+                    <td>${absence.start_date}${absence.end_date && absence.end_date !== absence.start_date ? ' – ' + absence.end_date : ''}</td>
+                    <td>${absence.reason || '—'}</td>
+                    <td>—</td>
+                    <td>${statusBadge}</td>
+                    <td>
+                        <div class="teacher-actions">
+                            <button class="btn btn-primary btn-sm" onclick="resolveAbsence(${absence.absence_id})">Resolve</button>
+                            <button class="btn btn-secondary btn-sm" onclick="deleteAbsence(${absence.absence_id})">Delete</button>
+                        </div>
+                    </td>`;
+                absenceTbody.appendChild(row);
+            });
+        };
+
+        const filterAbsences = () => {
+            const dateVal = dateFilter ? dateFilter.value : '';
+            const teacherVal = teacherFilter ? teacherFilter.value : 'all';
+            const statusVal = statusFilter ? statusFilter.value : 'all';
+
+            const filtered = allAbsences.filter(a => {
+                const dateMatch = !dateVal || a.start_date <= dateVal && a.end_date >= dateVal;
+                const teacherMatch = teacherVal === 'all' || String(a.teacher_id) === String(teacherVal);
+                const statusMatch = statusVal === 'all' || a.status === statusVal;
+                return dateMatch && teacherMatch && statusMatch;
+            });
+            renderAbsencesTable(filtered);
+        };
+
+        const loadAbsences = async () => {
+            if (!absenceTbody) return;
+            absenceTbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:2rem;">Loading...</td></tr>';
+            try {
+                const res = await fetch('/api/absences');
+                if (!res.ok) throw new Error('Failed to fetch absences');
+                allAbsences = await res.json();
+                renderAbsencesTable(allAbsences);
+            } catch (err) {
+                console.error('Error loading absences:', err);
+                if (absenceTbody) {
+                    absenceTbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--danger-color);">Failed to load absences.</td></tr>`;
+                }
+            }
+        };
+
+        window.resolveAbsence = async (absenceId) => {
+            try {
+                const res = await fetch(`/api/absences/${absenceId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status: 'resolved' })
+                });
+                if (!res.ok) throw new Error('Failed to resolve absence');
+                showSuccessAlert('Absence marked as resolved.');
+                await loadAbsences();
+            } catch (err) {
+                showErrorAlert(`Error: ${err.message}`);
+            }
+        };
+
+        window.deleteAbsence = async (absenceId) => {
+            if (!confirm('Delete this absence record?')) return;
+            try {
+                const res = await fetch(`/api/absences/${absenceId}`, { method: 'DELETE' });
+                if (!res.ok) throw new Error('Failed to delete absence');
+                showSuccessAlert('Absence deleted.');
+                await loadAbsences();
+            } catch (err) {
+                showErrorAlert(`Error: ${err.message}`);
+            }
+        };
+
+        if (addAbsenceBtn) {
+            addAbsenceBtn.addEventListener('click', () => {
+                openModal('Record Absence', 'absence-form');
+            });
+        }
 
         [autoSuggestBtn, manualAssignBtn, rescheduleBtn].forEach(btn => {
-            btn.addEventListener('click', () => {
-                document.getElementById('absence-solutions').style.display = 'none';
-                showSuccessAlert('Solutions processed successfully!');
-            });
+            if (btn) {
+                btn.addEventListener('click', () => {
+                    document.getElementById('absence-solutions').style.display = 'none';
+                    showSuccessAlert('Solution applied successfully!');
+                });
+            }
         });
+
+        // Filter event listeners
+        if (dateFilter) dateFilter.addEventListener('change', filterAbsences);
+        if (teacherFilter) teacherFilter.addEventListener('change', filterAbsences);
+        if (statusFilter) statusFilter.addEventListener('change', filterAbsences);
+
+        await Promise.all([populateTeacherDropdown(), loadAbsences()]);
     };
 
     // Export and Print

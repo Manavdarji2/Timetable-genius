@@ -17,7 +17,8 @@ def update_schema():
             host=os.environ.get("DB_HOST"),
             user=os.environ.get("DB_USER"),
             password=os.environ.get("DB_PASSWORD"),
-            database=os.environ.get("DB_NAME")
+            database=os.environ.get("DB_NAME"),
+            auth_plugin="mysql_native_password"
         )
         cursor = conn.cursor()
         
@@ -39,9 +40,26 @@ def update_schema():
         else:
             print("'token_expiry' column already exists.")
             
+        # Create teacher_absences table if it doesn't exist
+        print("Checking for teacher_absences table...")
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS teacher_absences (
+                absence_id INT AUTO_INCREMENT PRIMARY KEY,
+                teacher_id INT NOT NULL,
+                start_date DATE NOT NULL,
+                end_date DATE NOT NULL,
+                reason TEXT,
+                status ENUM('pending', 'resolved') DEFAULT 'pending',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (teacher_id) REFERENCES teachers(teacher_id)
+                    ON DELETE CASCADE
+            )
+        """)
+        print("teacher_absences table ready.")
+
         conn.commit()
         print("Success: Database schema updated.")
-        
+
     except Exception as e:
         print(f"Error updating database: {e}")
     finally:
