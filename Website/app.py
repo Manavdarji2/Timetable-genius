@@ -2,37 +2,49 @@ from flask import Flask, render_template, request, jsonify, session, redirect, u
 from flask_cors import CORS
 import os
 import json
+import logging
 import pymongo
 import mysql.connector
+from mysql.connector import pooling
 from functools import wraps
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta
 import secrets
 from PIL import Image
-# from Generative_AI import generate
 import pandas as pd
 from Final_test import Generate_test_timetable
-# from Test import generate
 from dotenv import load_dotenv
 load_dotenv()
 app = Flask(__name__, template_folder="templates", static_folder='Static')
 CORS(app)
 app.secret_key = os.urandom(24)
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024 
-# Database Connections
-# MySQL Connection
-def get_mysql_connection():
-    return mysql.connector.connect(
-        host=os.environ.get("DB_HOST"),
-        user=os.environ.get("DB_USER"),
-        password=os.environ.get("DB_PASSWORD"),
-        database=os.environ.get("DB_NAME")
-    )
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 
-# MongoDB Connection
+# Configure logging
+app.logger.setLevel(logging.INFO)
+
+# Database Connections
+# MySQL Connection Pool — reuses connections instead of opening new ones per request
+_mysql_pool = pooling.MySQLConnectionPool(
+    pool_name="timetable_pool",
+    pool_size=5,
+    pool_reset_session=True,
+    host=os.environ.get("DB_HOST"),
+    user=os.environ.get("DB_USER"),
+    password=os.environ.get("DB_PASSWORD"),
+    database=os.environ.get("DB_NAME")
+)
+
+def get_mysql_connection():
+    return _mysql_pool.get_connection()
+
+# MongoDB Connection — cached at module level to avoid reconnecting per request
+_mongo_client = pymongo.MongoClient(
+    os.environ.get("MONGODB", "mongodb://localhost:27017/")
+)
+
 def get_mongodb_connection():
-    client = pymongo.MongoClient("mongodb://localhost:27017/")
-    return client["timetablegenius"]
+    return _mongo_client["timetablegenius"]
 
 # Login Required Decorator
 def login_required(f):
@@ -171,8 +183,8 @@ def forgot_password():
                     print(f"Link: {reset_link}\n")
                     
                     return jsonify({'message': 'Reset instructions sent to your email'})
-                except mysql.connector.Error as db_err:
-                    print(f"Database error during token storage: {db_err}")
+                except Exception as db_err:
+                    app.logger.error(f"Database error during token storage: {db_err}")
                     return jsonify({'error': 'Database schema might need updates for reset tokens'}), 500
             
             # For security, always return success message even if email doesn't exist
@@ -504,10 +516,11 @@ def delete_teacher(teacher_id):
             WHERE teacher_id = %s AND user_id = %s
         """, (teacher_id, session.get('user_id')))
         teacher = cur.fetchone()
-        teacher_name=teacher['teacher_name']
-        if not teacher:
+        if teacher is None:
             return jsonify({'error': 'Teacher not found or not authorized'}), 404
-        else:
+
+        teacher_name = teacher['teacher_name']
+        if teacher:
             # Delete teacher
             cur.execute("""
                         DELETE FROM teachers WHERE teacher_id = %s AND user_id = %s
@@ -785,35 +798,41 @@ def update_class(class_id):
 @app.route('/api/classes/<int:class_id>', methods=['DELETE'])
 @login_required
 def delete_class(class_id):
-    mysql=get_mysql_connection()
+    mysql = get_mysql_connection()
     cur = mysql.cursor(dictionary=True)
-    
+
     try:
         cur.execute("""
-                    SELECT * from classes
-                    WHERE class_id=%s AND user_id = %s
-                    """,
-                    (
-                        class_id,
-                        session.get('user_id'),
-                    ))
-        classs=cur.fetchone()
-        if classs:
-            cur.execute("DELETE FROM class_subjects WHERE class_id = %s", (class_id,))
-            cur.execute("DELETE FROM classes WHERE class_id = %s AND user_id=%s", (class_id,session.get("user_id")))
-            mysql.commit()
-        else:
+            SELECT * FROM classes
+            WHERE class_id = %s AND user_id = %s
+        """, (class_id, session.get('user_id')))
+        classs = cur.fetchone()
+        if classs is None:
             return jsonify({"error": "Class not found"}), 404
-        
+
+        cur.execute(
+            "DELETE FROM class_subjects WHERE class_id = %s",
+            (class_id,),
+        )
+        cur.execute(
+            "DELETE FROM classes WHERE class_id = %s AND user_id = %s",
+            (class_id, session.get("user_id")),
+        )
+
+        # Log activity
         cur.execute(
             "INSERT INTO activity (user_id, action_type, description, entity_type, entity_id) VALUES (%s, %s, %s, %s, %s)",
-            (session.get("user_id"), "DELETE", f"Delete class: {classs['name']}", "class", class_id,)
+            (session.get("user_id"), "DELETE", f"Deleted class: {classs['name']}", "class", class_id),
         )
+        mysql.commit()
+        return jsonify({"message": "Class deleted successfully"}), 200
     except Exception as e:
-        # Rollback in case of error
-        print(e)
+        app.logger.error(f"Error deleting class: {e}")
         mysql.rollback()
         return jsonify({"error": str(e)}), 500
+    finally:
+        cur.close()
+        mysql.close()
     
 @app.route('/api/subjects', methods=['GET'])
 @login_required
@@ -1225,7 +1244,8 @@ def get_departments():
         """, (session.get('user_id'),))
         departments = cur.fetchall()
         return jsonify(departments), 200
-    except:
+    except Exception as e:
+        app.logger.error(f"Error fetching departments: {e}")
         return jsonify({'error': 'Failed to retrieve departments'}), 500
     finally:
         mysql.close()
@@ -1889,45 +1909,50 @@ def profile():
             cursor.close()
             mysql.close()
 
-@app.route('/api/change-password',methods=['POST'])
+@app.route('/api/change-password', methods=['POST'])
 @login_required
 def update_password():
     mysql = get_mysql_connection()
     cursor = mysql.cursor(dictionary=True)
-    
+
     try:
         user_id = session.get('user_id')
-        if not user_id:
+        if user_id is None:
             return jsonify({'error': 'User not authenticated'}), 401
-        
-        # Get new password from request
+
+        # Get passwords from request
         new_password = request.json.get('new_password')
         current_password = request.json.get('current_password')
         if not new_password:
             return jsonify({'error': 'New password is required'}), 400
+        if not current_password:
+            return jsonify({'error': 'Current password is required'}), 400
+
         cursor.execute("""
-            SELECT password FROM users
+            SELECT password_hash FROM users
             WHERE user_id = %s
         """, (user_id,))
         user = cursor.fetchone()
-        if user.password_hash != current_password:
+        if user is None:
+            return jsonify({'error': 'User not found'}), 404
+
+        # Verify current password using check_password_hash
+        if not check_password_hash(user['password_hash'], current_password):
             return jsonify({'error': 'Current password is incorrect'}), 401
-        
-        # Hash the new password
-        hashed_password = generate_password_hash(new_password, method='sha256')
-        
+
+        # Hash the new password (default pbkdf2:sha256)
+        hashed_password = generate_password_hash(new_password)
+
         # Update password in database
         cursor.execute("""
-            UPDATE users 
-            SET password = %s, updated_at = %s 
+            UPDATE users
+            SET password_hash = %s, updated_at = %s
             WHERE user_id = %s
         """, (hashed_password, datetime.now(), user_id))
-        
-        mysql.commit()
-        
+
         # Log activity
         cursor.execute("""
-            INSERT INTO activity (user_id, action_type, description, entity_type, entity_id) 
+            INSERT INTO activity (user_id, action_type, description, entity_type, entity_id)
             VALUES (%s, %s, %s, %s, %s)
         """, (
             user_id,
@@ -1941,13 +1966,12 @@ def update_password():
             'message': 'Password updated successfully',
             'timestamp': datetime.now().isoformat()
         })
-        
-    
+
     except Exception as e:
         mysql.rollback()
-        print(f"Error updating password: {e}")
+        app.logger.error(f"Error updating password: {e}")
         return jsonify({'error': 'Failed to update password'}), 500
-    
+
     finally:
         cursor.close()
         mysql.close()

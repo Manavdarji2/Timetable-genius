@@ -259,7 +259,7 @@ document.addEventListener('DOMContentLoaded', () => {
             } catch (error) {
                 console.error('Error deleting teacher:', error);
                 // Show error message to user
-                alert('Failed to delete teacher. Please try again later.');
+                showToast('Failed to delete teacher. Please try again later.', 'error');
             }finally{
                 window.location.reload();
             }
@@ -430,15 +430,15 @@ document.addEventListener('DOMContentLoaded', () => {
                         location.reload();
                     }
                     // Optionally show a success message to the user
-                    alert('Subject deleted successfully');
+                    showToast('Subject deleted successfully', 'success');
                 } else {
                     // Handle error responses
                     console.error('Error:', data.error);
-                    alert(`Failed to delete subject: ${data.error}`);
+                    showToast(`Failed to delete subject: ${data.error}`, 'error');
                 }
             } catch (error) {
                 console.error('Error deleting subject:', error);
-                alert('An unexpected error occurred while deleting the subject');
+                showToast('An unexpected error occurred while deleting the subject', 'error');
             }finally{
                 window.location.reload()
             }
@@ -551,7 +551,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 openModal('Class Edit', 'edit-classes-form', classData, subjectDict, class_id);
             } catch (error) {
                 console.error('Error fetching class details:', error);
-                alert(`Error loading class data: ${error.message}`);
+                showToast(`Error loading class data: ${error.message}`, 'error');
             }
         };
     
@@ -565,10 +565,10 @@ document.addEventListener('DOMContentLoaded', () => {
     
                 allClasses = allClasses.filter(classItem => classItem.class_id !== class_id);
                 renderClassesTable(allClasses);
-                alert('Class deleted successfully');
+                showToast('Class deleted successfully', 'success');
             } catch (error) {
                 console.error('Error deleting class:', error);
-                alert(`Error deleting class: ${error.message}`);
+                showToast(`Error deleting class: ${error.message}`, 'error');
             }
         };
     
@@ -676,7 +676,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }catch(error){
                 console.error('Error deleting classroom:', error);
                 // Show error message to user
-                alert('Failed to delete classroom. Please try again later.');
+                showToast('Failed to delete classroom. Please try again later.', 'error');
             }finally{
                 window.location.reload()
             }
@@ -699,7 +699,7 @@ document.addEventListener('DOMContentLoaded', () => {
             } catch (error) {
                 console.error('Error fetching classroom data:', error);
                 // Show error message to user
-                alert('Failed to fetch classroom data. Please try again later.');
+                showToast('Failed to fetch classroom data. Please try again later.', 'error');
             }
         }; 
     };
@@ -1076,7 +1076,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         
                         if (response.ok) {
                             // Show success message
-                            alert('Class saved successfully!');
+                            showToast('Class saved successfully!', 'success');
                             
                             // Close modal or redirect
                             modal.style.display = 'none'; // Assuming 'modal' is your modal element
@@ -1085,11 +1085,11 @@ document.addEventListener('DOMContentLoaded', () => {
                             location.reload();
                         } else {
                             // Show error message
-                            alert('Error saving class: ' + (result.error || 'Unknown error'));
+                            showToast('Error saving class: ' + (result.error || 'Unknown error'), 'error');
                         }
                     } catch (error) {
                         console.error('Error saving class:', error);
-                        alert('Error saving class: ' + error.message);
+                        showToast('Error saving class: ' + error.message, 'error');
                     }
                 });
                 
@@ -1118,13 +1118,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     const subjectId = subjectSelect.value;
                     
                     if (!subjectId) {
-                        alert("Please select a subject!");
+                        showToast('Please select a subject!', 'warning');
                         return;
                     }
                     
                     // Check if already added
                     if (selectedSubjects.has(subjectId)) {
-                        alert("This subject is already added!");
+                        showToast('This subject is already added!', 'warning');
                         return;
                     }
                     
@@ -1257,7 +1257,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     
                     if (response.ok) {
                         // Show success message
-                        alert('Class updated successfully!');
+                        showToast('Class updated successfully!', 'success');
                         
                         // Close modal
                         modal.style.display = 'none';
@@ -1266,11 +1266,11 @@ document.addEventListener('DOMContentLoaded', () => {
                         location.reload();
                     } else {
                         // Show error message
-                        alert('Error updating class: ' + (result.error || 'Unknown error'));
+                        showToast('Error updating class: ' + (result.error || 'Unknown error'), 'error');
                     }
                 } catch (error) {
                     console.error('Error updating class:', error);
-                    alert('Error updating class: ' + error.message);
+                    showToast('Error updating class: ' + error.message, 'error');
                 }
                 });
 
@@ -1335,7 +1335,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 } catch (error) {
                     console.error('Error fetching class data:', error);
-                    alert('Error loading class data: ' + error.message);
+                    showToast('Error loading class data: ' + error.message, 'error');
                 }
                 }
 
@@ -1388,13 +1388,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 const subjectId = String(subjectSelect.value); // Convert to string for consistency
 
                 if (!subjectId) {
-                    alert("Please select a subject!");
+                    showToast('Please select a subject!', 'warning');
                     return;
                 }
 
                 // Check if already added
                 if (selectedSubjectsInfo.has(subjectId)) {
-                    alert("This subject is already added!");
+                    showToast('This subject is already added!', 'warning');
                     return;
                 }
 
@@ -1543,7 +1543,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         const result=await Responce.json()
                         if(result.status===200){
                             console.log(result.data)
-                            alert("Subject Added Successfully")
+                            showToast('Subject Added Successfully', 'success');
                         }
                     }catch(error){
                         console.error(error)
@@ -1803,7 +1803,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         
                     } catch(error) {
                         console.error('Error updating classroom:', error);
-                        alert('Failed to update classroom: ' + error.message);
+                        showToast('Failed to update classroom: ' + error.message, 'error');
                     }finally{
                         window.location.reload()
                     }
@@ -1900,29 +1900,13 @@ document.addEventListener('DOMContentLoaded', () => {
         };
     };
 
-    // Alert Handling
+    // Alert Handling — now wired to toast system
     const showSuccessAlert = (message) => {
-        const successAlert = document.getElementById('success-alert');
-        const successMessage = document.getElementById('success-message');
-        
-        successMessage.textContent = message;
-        successAlert.style.display = 'flex';
-
-        setTimeout(() => {
-            successAlert.style.display = 'none';
-        }, 3000);
+        showToast(message, 'success');
     };
 
     const showErrorAlert = (message) => {
-        const errorAlert = document.getElementById('error-alert');
-        const errorMessage = document.getElementById('error-message');
-        
-        errorMessage.textContent = message;
-        errorAlert.style.display = 'flex';
-
-        setTimeout(() => {
-            errorAlert.style.display = 'none';
-        }, 3000);
+        showToast(message, 'error');
     };
     const initViewTimetable = async () => {
     const timetableBody = document.querySelector('#timetable-view tbody');
@@ -2356,11 +2340,11 @@ document.addEventListener('DOMContentLoaded', function() {
                     window.location.href = '/login';
                 } else {
                     // Handle error
-                    alert(data.error || 'Signup failed. Please try again.');
+                    showToast(data.error || 'Signup failed. Please try again.', 'error');
                 }
             } catch (error) {
                 console.error('Error:', error);
-                alert('An error occurred. Please try again.');
+                showToast('An error occurred. Please try again.', 'error');
             }
         });
     }
@@ -2477,36 +2461,61 @@ function ImageUploadANY() {
         }
     });
 }
-// Helper functions for showing alerts and loading indicators
-function showAlert(message, type) {
-    // Check if an alert already exists and remove it
-    const existingAlert = document.querySelector('.alert');
-    if (existingAlert) {
-        existingAlert.remove();
+// ============================================================
+// TOAST NOTIFICATION SYSTEM
+// ============================================================
+(function initToastContainer() {
+    if (!document.getElementById('toast-container')) {
+        const container = document.createElement('div');
+        container.id = 'toast-container';
+        container.className = 'toast-container';
+        document.body.appendChild(container);
     }
-    
-    // Create the alert element
-    const alert = document.createElement('div');
-    alert.className = `alert ${type}`;
-    
-    // Add icon based on alert type
-    const icon = document.createElement('i');
-    icon.className = type === 'success' ? 'fas fa-check-circle' : 'fas fa-exclamation-circle';
-    alert.appendChild(icon);
-    
-    // Add message
-    const text = document.createTextNode(message);
-    alert.appendChild(text);
-    
-    // Add to document
-    document.body.appendChild(alert);
-    
-    // Remove alert after 3 seconds
-    setTimeout(() => {
-        if (alert.parentNode) {
-            alert.parentNode.removeChild(alert);
-        }
-    }, 3000);
+})();
+
+const TOAST_ICONS = {
+    success: 'fas fa-check-circle',
+    error:   'fas fa-exclamation-circle',
+    warning: 'fas fa-exclamation-triangle',
+    info:    'fas fa-info-circle',
+};
+
+function showToast(message, type = 'info', duration = 4000) {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+
+    const toast = document.createElement('div');
+    toast.className = `toast toast--${type}`;
+    toast.setAttribute('role', 'alert');
+    toast.innerHTML = `
+        <span class="toast__icon"><i class="${TOAST_ICONS[type] || TOAST_ICONS.info}"></i></span>
+        <div class="toast__body">
+            <div class="toast__message">${message}</div>
+        </div>
+        <button class="toast__close" aria-label="Dismiss">&times;</button>
+    `;
+
+    const closeBtn = toast.querySelector('.toast__close');
+    closeBtn.addEventListener('click', () => dismissToast(toast));
+
+    container.appendChild(toast);
+
+    // Auto-dismiss
+    const timeoutId = setTimeout(() => dismissToast(toast), duration);
+    toast._timeoutId = timeoutId;
+}
+
+function dismissToast(toast) {
+    if (toast._dismissed) return;
+    toast._dismissed = true;
+    clearTimeout(toast._timeoutId);
+    toast.classList.add('toast-leaving');
+    toast.addEventListener('animationend', () => toast.remove(), { once: true });
+}
+
+// Backward-compatible aliases
+function showAlert(message, type) {
+    showToast(message, type);
 }
 
 function showLoading(message = 'Loading...') {
@@ -2636,23 +2645,9 @@ function disableCompactView() {
     showNotification('Compact view disabled', 'success');
 }
 
-// Helper function to show notifications
+// Helper function to show notifications — delegates to toast system
 function showNotification(message, type = 'success') {
-    // Create notification element
-    const notification = document.createElement('div');
-    notification.className = `alert ${type}`;
-    notification.innerHTML = `
-        <i class="fas fa-${type === 'success' ? 'check-circle' : 'exclamation-circle'}"></i>
-        ${message}
-    `;
-    
-    // Add to page
-    document.body.appendChild(notification);
-    
-    // Remove after 3 seconds
-    setTimeout(() => {
-        notification.remove();
-    }, 3000);
+    showToast(message, type);
 }
 
 // Initialize compact view when DOM is loaded
