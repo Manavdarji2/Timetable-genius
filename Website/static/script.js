@@ -27,64 +27,128 @@ document.addEventListener('DOMContentLoaded', () => {
     };
         // ...existing code...
     
+    // ── Profile: fetch, render and wire edit modal ────────────────────────────
     const initProfileStats = async () => {
+        // Helper: populate all read-only display fields from the stats object
+        const renderProfileDisplay = (stats) => {
+            const setEl = (id, val) => {
+                const el = document.getElementById(id);
+                if (el) el.textContent = val || 'N/A';
+            };
+            setEl('full-name', stats.name);
+            setEl('profile-name', stats.name);
+            setEl('email', stats.email);
+            setEl('phone', stats.phone ?? null);
+            setEl('dob', stats.dob ?? null);
+            setEl('department', stats.department ?? null);
+            setEl('employee-id', stats.employee_id ?? null);
+            setEl('profile-role',
+                stats.role === 'admin' ? 'Administrator'
+                : stats.role === 'teacher' ? 'Teacher'
+                : stats.role ?? 'N/A'
+            );
+            const joinedEl = document.getElementById('join-date');
+            if (joinedEl && stats.joined) {
+                joinedEl.textContent = new Date(stats.joined).toLocaleDateString();
+            }
+        };
+
+        // Helper: populate edit-modal inputs from stats
+        const populateEditModal = (stats) => {
+            const setVal = (id, val) => {
+                const el = document.getElementById(id);
+                if (el) el.value = val ?? '';
+            };
+            setVal('edit-full-name', stats.name);
+            setVal('edit-email', stats.email);
+            setVal('edit-phone', stats.phone);
+            setVal('edit-dob', stats.dob);
+            const deptEl = document.getElementById('edit-department');
+            if (deptEl && stats.department) {
+                Array.from(deptEl.options).forEach(o => {
+                    o.selected = o.value === stats.department || o.text === stats.department;
+                });
+            }
+        };
+
         try {
             const response = await fetch('/api/profile', {
                 method: 'GET',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
+                headers: { 'Content-Type': 'application/json' },
                 credentials: 'include'
             });
-    
-            if (!response.ok) {
-                throw new Error('Network response was not ok');
-            }
-    
+            if (!response.ok) throw new Error('Network response was not ok');
             const data = await response.json();
-            
-            // Update profile fields with proper error handling
-            const fullNameElement = document.getElementById('full-name');
-            const emailElement = document.getElementById('email');
-            const profilename=document.getElementById('profile-name');
-            const profile_image = document.getElementById('profile-picture');
-            if (profile_image) {
-                profile_image.src = data.stats.profilePicture || '/static/images/profile.png';
-            }
-            if (fullNameElement) {
-                fullNameElement.textContent = data.stats.name || 'N/A';
-            }
-            if (profilename){
-                profilename.textContent = data.stats.name || 'N/A';
-            }
-            if (emailElement) {
-                emailElement.textContent = data.stats.email || 'N/A';
-            }
-    
-            // Update other profile stats if available
-            if (data.stats.role) {
-                const roleElement = document.getElementById('profile-role');
-                if (roleElement) {
-                    if(data.stats.role=='admin'){
-                        roleElement.textContent ="Administrator";
-                    }else if(data.stats.role=="teacher"){
-                        roleElement.textContent = "Teacher";
-                    }else{
-                        roleElement.textContent = 'N/A';
-                    }
+            const stats = data.stats;
+
+            renderProfileDisplay(stats);
+            populateEditModal(stats);
+
+            // ── Wire Edit Profile button ──────────────────────────────────────
+            const editProfileBtn = document.getElementById('edit-profile-btn');
+            const editModal = document.getElementById('edit-profile-modal');
+            if (editProfileBtn && editModal) {
+                // Ensure the modal is fresh each open
+                editProfileBtn.onclick = () => {
+                    populateEditModal(stats);
+                    editModal.style.display = 'flex';
+                };
+
+                // Close handlers
+                editModal.querySelector('.close-btn').onclick = () => {
+                    editModal.style.display = 'none';
+                };
+                const cancelBtn = editModal.querySelector('.btn-secondary');
+                if (cancelBtn) cancelBtn.onclick = () => { editModal.style.display = 'none'; };
+
+                // Save handler
+                const saveBtn = editModal.querySelector('.btn-primary');
+                if (saveBtn) {
+                    saveBtn.onclick = async () => {
+                        const name = document.getElementById('edit-full-name').value.trim();
+                        const email = document.getElementById('edit-email').value.trim();
+                        if (!name || !email) {
+                            showToast('Name and email are required.', 'error');
+                            return;
+                        }
+                        try {
+                            saveBtn.disabled = true;
+                            saveBtn.textContent = 'Saving…';
+                            const res = await fetch('/api/profile', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                credentials: 'include',
+                                body: JSON.stringify({ name, email })
+                            });
+                            const result = await res.json();
+                            if (!res.ok) throw new Error(result.error || 'Failed to update profile');
+
+                            // Update local stats and re-render display fields
+                            stats.name = name;
+                            stats.email = email;
+                            renderProfileDisplay(stats);
+
+                            editModal.style.display = 'none';
+                            showToast('Profile updated successfully!', 'success');
+                        } catch (err) {
+                            showToast(`Error: ${err.message}`, 'error');
+                        } finally {
+                            saveBtn.disabled = false;
+                            saveBtn.textContent = 'Save Changes';
+                        }
+                    };
                 }
             }
-    
-            if (data.stats.joined) {
-                const joinedElement = document.getElementById('join-date');
-                if (joinedElement) {
-                    joinedElement.textContent = new Date(data.stats.joined).toLocaleDateString();
-                }
+
+            // ── Change Password button ─────────────────────────────────────────
+            const changePwBtn = document.getElementById('change-password-btn');
+            if (changePwBtn) {
+                changePwBtn.onclick = () => openModal('Change Password', 'change-password-form');
             }
-    
+
         } catch (error) {
             console.error('Failed to fetch profile:', error);
-            showErrorAlert('Failed to load profile data');
+            showToast('Failed to load profile data', 'error');
         }
     };
     
@@ -1880,7 +1944,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         showSuccessAlert('Absence recorded successfully.');
                         modal.style.display = 'none';
                         // Reload absence table if visible — loadAbsences is scoped in initAbsenceManagement
-                        if (typeof loadAbsences === 'function') loadAbsences();
+                        if (typeof window.loadAbsences === 'function') await window.loadAbsences();
                     } catch (err) {
                         showErrorAlert(`Error: ${err.message}`);
                     }
@@ -1951,11 +2015,8 @@ document.addEventListener('DOMContentLoaded', () => {
         };
 
         saveBtn.onclick = async () => {
-            // Add save logic
+            // Default handler — individual switch cases override this before the modal opens.
             modal.style.display = 'none';
-            showSuccessAlert('Record saved successfully!');
-            // display the div of id = absence-solution
-            document.getElementById('absence-solutions').style.display = 'block';  
         };
     };
 
@@ -2326,22 +2387,75 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!absenceTbody) return;
             absenceTbody.innerHTML = '';
             if (absences.length === 0) {
-                absenceTbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--dark-gray);padding:2rem;">No absences recorded.</td></tr>';
+                absenceTbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--dark-gray);padding:2rem;">No absences recorded. Click <strong>Record Absence</strong> to add one.</td></tr>';
                 return;
             }
+
+            const today = new Date().toISOString().split('T')[0];
+
             absences.forEach(absence => {
                 const row = document.createElement('tr');
-                const statusBadge = `<span class="status-badge status-${absence.status}">${absence.status}</span>`;
+
+                // Duration in days
+                const startD = new Date(absence.start_date);
+                const endD   = new Date(absence.end_date);
+                const durationDays = Math.round((endD - startD) / (1000 * 60 * 60 * 24)) + 1;
+                const durationLabel = durationDays === 1 ? '1 day' : `${durationDays} days`;
+
+                // Date range string
+                const dateRange = absence.start_date === absence.end_date
+                    ? absence.start_date
+                    : `${absence.start_date} \u2192 ${absence.end_date}`;
+
+                // Is the teacher currently absent right now?
+                const isNow = absence.status === 'pending'
+                    && today >= absence.start_date
+                    && today <= absence.end_date;
+
+                // Build status badge
+                const statusBadge = isNow
+                    ? `<span class="status-badge status-pending" style="display:inline-flex;align-items:center;gap:5px;">
+                           <span style="width:7px;height:7px;border-radius:50%;background:currentColor;display:inline-block;"></span>
+                           Absent Now
+                       </span>`
+                    : `<span class="status-badge status-${absence.status}">${absence.status}</span>`;
+
+                // Teacher cell — highlighted when currently absent
+                const teacherCell = isNow
+                    ? `<strong style="color:var(--danger-color,#e74c3c);">${absence.teacher_name || 'Unknown'}</strong>
+                       <span style="font-size:0.7rem;color:var(--danger-color,#e74c3c);display:block;margin-top:2px;font-weight:600;">\u25cf Currently Absent</span>`
+                    : `<strong>${absence.teacher_name || 'Unknown'}</strong>`;
+
+                // Reason — truncated with tooltip for long values
+                const reason = absence.reason || '\u2014';
+                const reasonDisplay = reason.length > 70
+                    ? `<span title="${reason.replace(/"/g, '&quot;')}" style="cursor:help;">${reason.substring(0, 67)}\u2026</span>`
+                    : reason;
+
+                // Action buttons — no Resolve for already resolved rows
+                const actionBtns = absence.status === 'resolved'
+                    ? `<button class="btn btn-secondary btn-sm" onclick="deleteAbsence(${absence.absence_id})">Delete</button>`
+                    : `<button class="btn btn-primary btn-sm" onclick="resolveAbsence(${absence.absence_id})" title="AI suggest / manual assign / reschedule">Resolve</button>
+                       <button class="btn btn-secondary btn-sm" onclick="deleteAbsence(${absence.absence_id})">Delete</button>`;
+
+                // Visually highlight active absences
+                if (isNow) {
+                    row.style.background  = 'rgba(231,76,60,0.04)';
+                    row.style.borderLeft  = '3px solid var(--danger-color,#e74c3c)';
+                }
+
                 row.innerHTML = `
-                    <td>${absence.teacher_name || 'Unknown'}</td>
-                    <td>${absence.start_date}${absence.end_date && absence.end_date !== absence.start_date ? ' – ' + absence.end_date : ''}</td>
-                    <td>${absence.reason || '—'}</td>
-                    <td>—</td>
+                    <td style="min-width:130px;">${teacherCell}</td>
+                    <td style="white-space:nowrap;">
+                        ${dateRange}
+                        <span style="font-size:0.75rem;color:var(--dark-gray);display:block;">${durationLabel}</span>
+                    </td>
+                    <td style="max-width:220px;word-break:break-word;">${reasonDisplay}</td>
+                    <td style="white-space:nowrap;">${durationLabel}</td>
                     <td>${statusBadge}</td>
                     <td>
-                        <div class="teacher-actions">
-                            <button class="btn btn-primary btn-sm" onclick="resolveAbsence(${absence.absence_id})">Resolve</button>
-                            <button class="btn btn-secondary btn-sm" onclick="deleteAbsence(${absence.absence_id})">Delete</button>
+                        <div class="teacher-actions" style="display:flex;gap:0.4rem;flex-wrap:wrap;">
+                            ${actionBtns}
                         </div>
                     </td>`;
                 absenceTbody.appendChild(row);
@@ -2377,19 +2491,25 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
         };
+        // Expose globally so the absence-form modal save handler can trigger a table refresh
+        window.loadAbsences = loadAbsences;
 
-        window.resolveAbsence = async (absenceId) => {
-            try {
-                const res = await fetch(`/api/absences/${absenceId}`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ status: 'resolved' })
-                });
-                if (!res.ok) throw new Error('Failed to resolve absence');
-                showSuccessAlert('Absence marked as resolved.');
-                await loadAbsences();
-            } catch (err) {
-                showErrorAlert(`Error: ${err.message}`);
+        // Tracks which absence is currently being resolved via the solutions panel
+        let activeAbsenceId = null;
+
+        const hideSolutionsPanel = () => {
+            const panel = document.getElementById('absence-solutions');
+            if (panel) panel.style.display = 'none';
+            activeAbsenceId = null;
+        };
+
+        // "Resolve" row button — shows the solutions panel for the chosen absence
+        window.resolveAbsence = (absenceId) => {
+            activeAbsenceId = absenceId;
+            const panel = document.getElementById('absence-solutions');
+            if (panel) {
+                panel.style.display = 'block';
+                panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
             }
         };
 
@@ -2399,6 +2519,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const res = await fetch(`/api/absences/${absenceId}`, { method: 'DELETE' });
                 if (!res.ok) throw new Error('Failed to delete absence');
                 showSuccessAlert('Absence deleted.');
+                hideSolutionsPanel();
                 await loadAbsences();
             } catch (err) {
                 showErrorAlert(`Error: ${err.message}`);
@@ -2407,18 +2528,219 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (addAbsenceBtn) {
             addAbsenceBtn.addEventListener('click', () => {
+                hideSolutionsPanel();
                 openModal('Record Absence', 'absence-form');
             });
         }
 
-        [autoSuggestBtn, manualAssignBtn, rescheduleBtn].forEach(btn => {
-            if (btn) {
-                btn.addEventListener('click', () => {
-                    document.getElementById('absence-solutions').style.display = 'none';
-                    showSuccessAlert('Solution applied successfully!');
-                });
-            }
-        });
+        // ── Auto-Suggest ────────────────────────────────────────────────────────
+        if (autoSuggestBtn) {
+            autoSuggestBtn.addEventListener('click', async () => {
+                if (!activeAbsenceId) {
+                    showErrorAlert('Please select an absence to resolve first.');
+                    return;
+                }
+                const modal = document.getElementById('modal-container');
+                const modalTitle = document.getElementById('modal-title');
+                const modalBody = document.getElementById('modal-body');
+                const saveBtn = document.getElementById('modal-save');
+
+                modalTitle.textContent = 'AI Replacement Suggestions';
+                modalBody.innerHTML = '<p style="text-align:center;padding:1rem;">Loading suggestions…</p>';
+                saveBtn.textContent = 'Assign Selected';
+                modal.style.display = 'flex';
+
+                const closeBtn = document.getElementById('modal-close');
+                const cancelBtn = document.getElementById('modal-cancel');
+                closeBtn.onclick = cancelBtn.onclick = () => { modal.style.display = 'none'; };
+
+                try {
+                    const res = await fetch(`/api/absences/${activeAbsenceId}/auto-suggest`);
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.error || 'Failed to fetch suggestions');
+
+                    if (!data.suggestions || data.suggestions.length === 0) {
+                        modalBody.innerHTML = '<p style="text-align:center;padding:1rem;color:var(--dark-gray);">No available teachers found for this period.</p>';
+                        saveBtn.disabled = true;
+                        return;
+                    }
+
+                    saveBtn.disabled = false;
+                    const rows = data.suggestions.map((t, i) => `
+                        <tr>
+                            <td><input type="radio" name="suggest-teacher" value="${t.teacher_id}" id="st-${i}" ${i === 0 ? 'checked' : ''}></td>
+                            <td><label for="st-${i}">${t.teacher_name}</label></td>
+                            <td>${t.department_name || '—'}</td>
+                            <td>${t.weekly_hours ?? '—'} hrs</td>
+                        </tr>`).join('');
+
+                    modalBody.innerHTML = `
+                        <p style="margin-bottom:0.75rem;">
+                            Covering for <strong>${data.absent_teacher}</strong>
+                            (${data.period.start} – ${data.period.end})
+                        </p>
+                        <table style="width:100%;border-collapse:collapse;font-size:0.9rem;">
+                            <thead>
+                                <tr style="background:var(--surface-2,#f0f0f0);">
+                                    <th style="padding:0.5rem;text-align:left;"></th>
+                                    <th style="padding:0.5rem;text-align:left;">Teacher</th>
+                                    <th style="padding:0.5rem;text-align:left;">Department</th>
+                                    <th style="padding:0.5rem;text-align:left;">Weekly hrs</th>
+                                </tr>
+                            </thead>
+                            <tbody>${rows}</tbody>
+                        </table>`;
+
+                    saveBtn.onclick = async () => {
+                        const selected = modalBody.querySelector('input[name="suggest-teacher"]:checked');
+                        if (!selected) { showErrorAlert('Please select a teacher.'); return; }
+                        try {
+                            const assignRes = await fetch(`/api/absences/${activeAbsenceId}/manual-assign`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ replacement_teacher_id: parseInt(selected.value, 10) })
+                            });
+                            const assignData = await assignRes.json();
+                            if (!assignRes.ok) throw new Error(assignData.error || 'Assignment failed');
+                            modal.style.display = 'none';
+                            showSuccessAlert(assignData.message);
+                            hideSolutionsPanel();
+                            await loadAbsences();
+                        } catch (err) {
+                            showErrorAlert(`Error: ${err.message}`);
+                        }
+                    };
+
+                } catch (err) {
+                    modalBody.innerHTML = `<p style="color:var(--danger,red);padding:1rem;">${err.message}</p>`;
+                    saveBtn.disabled = true;
+                }
+            });
+        }
+
+        // ── Manual Assignment ────────────────────────────────────────────────────
+        if (manualAssignBtn) {
+            manualAssignBtn.addEventListener('click', async () => {
+                if (!activeAbsenceId) {
+                    showErrorAlert('Please select an absence to resolve first.');
+                    return;
+                }
+                const modal = document.getElementById('modal-container');
+                const modalTitle = document.getElementById('modal-title');
+                const modalBody = document.getElementById('modal-body');
+                const saveBtn = document.getElementById('modal-save');
+
+                modalTitle.textContent = 'Assign Replacement Teacher';
+                saveBtn.textContent = 'Assign';
+                modal.style.display = 'flex';
+
+                const closeBtn = document.getElementById('modal-close');
+                const cancelBtn = document.getElementById('modal-cancel');
+                closeBtn.onclick = cancelBtn.onclick = () => { modal.style.display = 'none'; };
+
+                // Build teacher dropdown from already-fetched list or re-fetch
+                let teacherOptions = '<option value="">— select teacher —</option>';
+                try {
+                    const tres = await fetch('/api/teachers');
+                    if (tres.ok) {
+                        const teachers = await tres.json();
+                        teacherOptions += teachers.map(t =>
+                            `<option value="${t.teacher_id}">${t.teacher_name}${t.department_name ? ' (' + t.department_name + ')' : ''}</option>`
+                        ).join('');
+                    }
+                } catch (_) { /* proceed with empty list */ }
+
+                modalBody.innerHTML = `
+                    <div class="form-group">
+                        <label for="manual-teacher-select">Select Replacement Teacher</label>
+                        <select id="manual-teacher-select" style="width:100%;padding:0.5rem;margin-top:0.25rem;">
+                            ${teacherOptions}
+                        </select>
+                    </div>`;
+
+                saveBtn.onclick = async () => {
+                    const sel = document.getElementById('manual-teacher-select');
+                    if (!sel || !sel.value) { showErrorAlert('Please select a teacher.'); return; }
+                    try {
+                        const res = await fetch(`/api/absences/${activeAbsenceId}/manual-assign`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ replacement_teacher_id: parseInt(sel.value, 10) })
+                        });
+                        const data = await res.json();
+                        if (!res.ok) throw new Error(data.error || 'Assignment failed');
+                        modal.style.display = 'none';
+                        showSuccessAlert(data.message);
+                        hideSolutionsPanel();
+                        await loadAbsences();
+                    } catch (err) {
+                        showErrorAlert(`Error: ${err.message}`);
+                    }
+                };
+            });
+        }
+
+        // ── Reschedule ────────────────────────────────────────────────────────────
+        if (rescheduleBtn) {
+            rescheduleBtn.addEventListener('click', () => {
+                if (!activeAbsenceId) {
+                    showErrorAlert('Please select an absence to resolve first.');
+                    return;
+                }
+                const modal = document.getElementById('modal-container');
+                const modalTitle = document.getElementById('modal-title');
+                const modalBody = document.getElementById('modal-body');
+                const saveBtn = document.getElementById('modal-save');
+
+                modalTitle.textContent = 'Reschedule Affected Classes';
+                saveBtn.textContent = 'Confirm Reschedule';
+                const today = new Date().toISOString().split('T')[0];
+
+                modalBody.innerHTML = `
+                    <p style="margin-bottom:0.75rem;">Choose new dates for the affected classes:</p>
+                    <div class="form-group">
+                        <label for="reschedule-start">New Start Date *</label>
+                        <input type="date" id="reschedule-start" value="${today}" min="${today}" style="width:100%;padding:0.5rem;margin-top:0.25rem;">
+                    </div>
+                    <div class="form-group" style="margin-top:0.75rem;">
+                        <label for="reschedule-end">New End Date *</label>
+                        <input type="date" id="reschedule-end" value="${today}" min="${today}" style="width:100%;padding:0.5rem;margin-top:0.25rem;">
+                    </div>
+                    <div class="form-group" style="margin-top:0.75rem;">
+                        <label for="reschedule-note">Note (optional)</label>
+                        <input type="text" id="reschedule-note" placeholder="e.g. Moved to next week" style="width:100%;padding:0.5rem;margin-top:0.25rem;">
+                    </div>`;
+
+                modal.style.display = 'flex';
+
+                const closeBtn = document.getElementById('modal-close');
+                const cancelBtn = document.getElementById('modal-cancel');
+                closeBtn.onclick = cancelBtn.onclick = () => { modal.style.display = 'none'; };
+
+                saveBtn.onclick = async () => {
+                    const newStart = document.getElementById('reschedule-start').value;
+                    const newEnd = document.getElementById('reschedule-end').value;
+                    const note = document.getElementById('reschedule-note').value;
+                    if (!newStart || !newEnd) { showErrorAlert('Both dates are required.'); return; }
+                    if (newEnd < newStart) { showErrorAlert('End date must be on or after start date.'); return; }
+                    try {
+                        const res = await fetch(`/api/absences/${activeAbsenceId}/reschedule`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ new_start_date: newStart, new_end_date: newEnd, note })
+                        });
+                        const data = await res.json();
+                        if (!res.ok) throw new Error(data.error || 'Reschedule failed');
+                        modal.style.display = 'none';
+                        showSuccessAlert(data.message);
+                        hideSolutionsPanel();
+                        await loadAbsences();
+                    } catch (err) {
+                        showErrorAlert(`Error: ${err.message}`);
+                    }
+                };
+            });
+        }
 
         // Filter event listeners
         if (dateFilter) dateFilter.addEventListener('change', filterAbsences);

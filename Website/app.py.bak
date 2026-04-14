@@ -111,27 +111,32 @@ def login():
         email = data.get('email')
         password = data.get('password')
         
+        mysql = get_mysql_connection()
+        cursor = mysql.cursor(dictionary=True)
         
         try:
-            with mysql_connection() as (mysql, cursor):
-                cursor.execute("""
-                    SELECT user_id, name, email, password_hash, role 
-                    FROM users 
-                    WHERE email = %s
-                """, (email,))
+            cursor.execute("""
+                SELECT user_id, name, email, password_hash, role 
+                FROM users 
+                WHERE email = %s
+            """, (email,))
             
-                user = cursor.fetchone()
+            user = cursor.fetchone()
             
-                if user and check_password_hash(user['password_hash'], password):
-                    session['user_id'] = user['user_id']
-                    session['user_name'] = user['name']
-                    session['user_role'] = user['role']
-                    return jsonify({'redirect': '/dashboard'})
-                else:
-                    return jsonify({'error': 'Invalid credentials'}), 401
+            if user and check_password_hash(user['password_hash'], password):
+                session['user_id'] = user['user_id']
+                session['user_name'] = user['name']
+                session['user_role'] = user['role']
+                return jsonify({'redirect': '/dashboard'})
+            else:
+                return jsonify({'error': 'Invalid credentials'}), 401
         except Exception as e:
             print(f"Error during login: {e}")
             return jsonify({'error': 'Login failed'}), 500
+        finally:
+            cursor.close()
+            mysql.close()
+    
     return render_template('Sign-in.html')
 
 @app.route('/signup', methods=['GET', 'POST'])
@@ -150,28 +155,33 @@ def signup():
         # Hash the password
         hashed_password = generate_password_hash(password)
         
+        mysql = get_mysql_connection()
+        cur = mysql.cursor(dictionary=True)
         
         try:
-            with mysql_connection() as (mysql, cur):
-                # Check if user already exists
-                cur.execute("SELECT email FROM users WHERE email = %s", (email,))
-                existing_user = cur.fetchone()
+            # Check if user already exists
+            cur.execute("SELECT email FROM users WHERE email = %s", (email,))
+            existing_user = cur.fetchone()
             
-                if existing_user:
-                    return jsonify({'error': 'Email already exists'}), 409
+            if existing_user:
+                return jsonify({'error': 'Email already exists'}), 409
             
-                # Insert new user
-                cur.execute("""
-                    INSERT INTO users (name, email, password_hash, role, created_at) 
-                    VALUES (%s, %s, %s, %s, %s)
-                """, (name, email, hashed_password, role, datetime.now()))
+            # Insert new user
+            cur.execute("""
+                INSERT INTO users (name, email, password_hash, role, created_at) 
+                VALUES (%s, %s, %s, %s, %s)
+            """, (name, email, hashed_password, role, datetime.now()))
             
-                mysql.commit()
-                return jsonify({'message': 'Registration successful'}), 201
+            mysql.commit()
+            return jsonify({'message': 'Registration successful'}), 201
             
         except Exception as e:
             print(f"Error during signup: {e}")
             return jsonify({'error': 'Registration failed'}), 500
+        finally:
+            cur.close()
+            mysql.close()
+            
     return render_template('Sign-up.html')
 
 @app.route('/logout')
@@ -188,43 +198,48 @@ def forgot_password():
         if not email:
             return jsonify({'error': 'Email is required'}), 400
             
+        mysql_conn = get_mysql_connection()
+        cursor = mysql_conn.cursor(dictionary=True)
         
         try:
-            with mysql_connection() as (mysql_conn, cursor):
-                cursor.execute("SELECT user_id, name FROM users WHERE email = %s", (email,))
-                user = cursor.fetchone()
+            cursor.execute("SELECT user_id, name FROM users WHERE email = %s", (email,))
+            user = cursor.fetchone()
             
-                if user:
-                    # Generate token
-                    token = secrets.token_urlsafe(32)
-                    expiry = datetime.now() + timedelta(hours=1)
+            if user:
+                # Generate token
+                token = secrets.token_urlsafe(32)
+                expiry = datetime.now() + timedelta(hours=1)
                 
-                    # Store token in DB (Assuming columns reset_token and token_expiry exist)
-                    # If they don't, this will fail and we'll handle it
-                    try:
-                        cursor.execute("""
-                            UPDATE users 
-                            SET reset_token = %s, token_expiry = %s 
-                            WHERE user_id = %s
-                        """, (token, expiry, user['user_id']))
-                        mysql_conn.commit()
+                # Store token in DB (Assuming columns reset_token and token_expiry exist)
+                # If they don't, this will fail and we'll handle it
+                try:
+                    cursor.execute("""
+                        UPDATE users 
+                        SET reset_token = %s, token_expiry = %s 
+                        WHERE user_id = %s
+                    """, (token, expiry, user['user_id']))
+                    mysql_conn.commit()
                     
-                        # Log the reset link (since we don't have real mail setup)
-                        reset_link = url_for('reset_password', token=token, _external=True)
-                        print(f"\n[PASSWORD RESET] For user {user['name']} ({email}):")
-                        print(f"Link: {reset_link}\n")
+                    # Log the reset link (since we don't have real mail setup)
+                    reset_link = url_for('reset_password', token=token, _external=True)
+                    print(f"\n[PASSWORD RESET] For user {user['name']} ({email}):")
+                    print(f"Link: {reset_link}\n")
                     
-                        return jsonify({'message': 'Reset instructions sent to your email'})
-                    except Exception as db_err:
-                        app.logger.error(f"Database error during token storage: {db_err}")
-                        return jsonify({'error': 'Database schema might need updates for reset tokens'}), 500
+                    return jsonify({'message': 'Reset instructions sent to your email'})
+                except Exception as db_err:
+                    app.logger.error(f"Database error during token storage: {db_err}")
+                    return jsonify({'error': 'Database schema might need updates for reset tokens'}), 500
             
-                # For security, always return success message even if email doesn't exist
-                return jsonify({'message': 'If an account exists with that email, reset instructions have been sent'})
+            # For security, always return success message even if email doesn't exist
+            return jsonify({'message': 'If an account exists with that email, reset instructions have been sent'})
             
         except Exception as e:
             print(f"Error in forgot_password: {e}")
             return jsonify({'error': 'An error occurred'}), 500
+        finally:
+            cursor.close()
+            mysql_conn.close()
+            
     return render_template('forgot-password.html')
 
 @app.route('/reset-password/<token>', methods=['GET', 'POST'])
@@ -236,188 +251,208 @@ def reset_password(token):
         if not new_password:
             return jsonify({'error': 'Password is required'}), 400
             
+        mysql_conn = get_mysql_connection()
+        cursor = mysql_conn.cursor(dictionary=True)
         
         try:
-            with mysql_connection() as (mysql_conn, cursor):
-                # Check token and expiry
-                cursor.execute("""
-                    SELECT user_id FROM users 
-                    WHERE reset_token = %s AND token_expiry > %s
-                """, (token, datetime.now()))
+            # Check token and expiry
+            cursor.execute("""
+                SELECT user_id FROM users 
+                WHERE reset_token = %s AND token_expiry > %s
+            """, (token, datetime.now()))
             
-                user = cursor.fetchone()
+            user = cursor.fetchone()
             
-                if not user:
-                    return jsonify({'error': 'Invalid or expired token'}), 400
+            if not user:
+                return jsonify({'error': 'Invalid or expired token'}), 400
                 
-                # Update password
-                hashed_password = generate_password_hash(new_password)
-                cursor.execute("""
-                    UPDATE users 
-                    SET password_hash = %s, reset_token = NULL, token_expiry = NULL 
-                    WHERE user_id = %s
-                """, (hashed_password, user['user_id']))
-                mysql_conn.commit()
+            # Update password
+            hashed_password = generate_password_hash(new_password)
+            cursor.execute("""
+                UPDATE users 
+                SET password_hash = %s, reset_token = NULL, token_expiry = NULL 
+                WHERE user_id = %s
+            """, (hashed_password, user['user_id']))
+            mysql_conn.commit()
             
-                return jsonify({'message': 'Password reset successful'})
+            return jsonify({'message': 'Password reset successful'})
             
         except Exception as e:
             print(f"Error in reset_password: {e}")
             return jsonify({'error': 'An error occurred'}), 500
+        finally:
+            cursor.close()
+            mysql_conn.close()
+            
     return render_template('reset-password.html', token=token)
 
 @app.route('/dashboard')
 @login_required
 def dashboard():
+    mysql = get_mysql_connection()
+    cur = mysql.cursor(dictionary=True)
     
     try:
-        with mysql_connection() as (mysql, cur):
-            # Get user details first
-            cur.execute(
-                "SELECT * FROM users WHERE user_id = %s",
-                (session.get('user_id'),)
-            )
-            user_details = cur.fetchone()
+        # Get user details first
+        cur.execute(
+            "SELECT * FROM users WHERE user_id = %s",
+            (session.get('user_id'),)
+        )
+        user_details = cur.fetchone()
         
-            if not user_details:
-                return redirect(url_for('login'))
+        if not user_details:
+            return redirect(url_for('login'))
 
-            # Get counts for dashboard
-            cur.execute("SELECT COUNT(*) as count FROM teachers WHERE user_id = %s", (session.get('user_id'),))
-            teacher_count = cur.fetchone()['count']
+        # Get counts for dashboard
+        cur.execute("SELECT COUNT(*) as count FROM teachers WHERE user_id = %s", (session.get('user_id'),))
+        teacher_count = cur.fetchone()['count']
         
-            cur.execute("SELECT COUNT(*) as count FROM classes WHERE user_id = %s", (session.get('user_id'),))
-            class_count = cur.fetchone()['count']
+        cur.execute("SELECT COUNT(*) as count FROM classes WHERE user_id = %s", (session.get('user_id'),))
+        class_count = cur.fetchone()['count']
         
-            cur.execute("SELECT COUNT(*) as count FROM classrooms WHERE user_id = %s", (session.get('user_id'),))
-            classroom_count = cur.fetchone()['count']
+        cur.execute("SELECT COUNT(*) as count FROM classrooms WHERE user_id = %s", (session.get('user_id'),))
+        classroom_count = cur.fetchone()['count']
         
-            cur.execute("SELECT COUNT(*) as count FROM subjects WHERE user_id = %s", (session.get('user_id'),))
-            subject_count = cur.fetchone()['count']
+        cur.execute("SELECT COUNT(*) as count FROM subjects WHERE user_id = %s", (session.get('user_id'),))
+        subject_count = cur.fetchone()['count']
         
-            cur.execute("""
-                SELECT a.*, u.name as user_name 
-                FROM activity a
-                LEFT JOIN users u ON a.user_id = u.user_id
-                WHERE a.user_id = %s
-                ORDER BY a.timestamp DESC 
-                LIMIT 5
-            """, (session.get('user_id'),))
-            activities = cur.fetchall()
+        cur.execute("""
+            SELECT a.*, u.name as user_name 
+            FROM activity a
+            LEFT JOIN users u ON a.user_id = u.user_id
+            WHERE a.user_id = %s
+            ORDER BY a.timestamp DESC 
+            LIMIT 5
+        """, (session.get('user_id'),))
+        activities = cur.fetchall()
 
-            # Return JSON if requested
-            if request.headers.get('Content-Type') == 'application/json':
-                return jsonify({
-                    'user_name': user_details['name'],
-                    'stats': {
-                        'teachers': teacher_count,
-                        'classes': class_count,
-                        'classrooms': classroom_count,
-                        'subjects': subject_count
-                    },
-                    'activities': activities
-                })
-
-            # Otherwise return the rendered template
-            return render_template('dashboard.html',
-                user_name=user_details['name'],
-                stats={
+        # Return JSON if requested
+        if request.headers.get('Content-Type') == 'application/json':
+            return jsonify({
+                'user_name': user_details['name'],
+                'stats': {
                     'teachers': teacher_count,
                     'classes': class_count,
                     'classrooms': classroom_count,
                     'subjects': subject_count
                 },
-                activities=activities
-            )
+                'activities': activities
+            })
+
+        # Otherwise return the rendered template
+        return render_template('dashboard.html',
+            user_name=user_details['name'],
+            stats={
+                'teachers': teacher_count,
+                'classes': class_count,
+                'classrooms': classroom_count,
+                'subjects': subject_count
+            },
+            activities=activities
+        )
         
     except Exception as e:
         print(f"Error loading dashboard: {e}")
         return render_template('dashboard.html', error="Failed to load dashboard data")
+    finally:
+        cur.close()
+        mysql.close()
+
 @app.route('/api/teachers', methods=['GET'])
 @login_required
 def get_teachers():
+    mysql = get_mysql_connection()
+    cur = mysql.cursor(dictionary=True)
     try:
-        with mysql_connection() as (mysql, cur):
-            # Fixed SQL query syntax (removed extra comma, added missing column
-            cur.execute("""
-                        SELECT 
-                        t.teacher_id, 
-                        t.teacher_name, 
-                        t.email, 
-                        t.phone, 
-                        t.weekly_hours, 
-                        d.name AS department_name, 
-                        GROUP_CONCAT(CONCAT(s.name, '-', SUBSTRING(s.type, 1, 1)) SEPARATOR ', ') AS subjects
-                    FROM 
-                        teachers t
-                    JOIN 
-                        departments d ON t.department_id = d.department_id
-                    LEFT JOIN 
-                        teacher_subjects ts ON t.teacher_id = ts.teacher_id
-                    LEFT JOIN 
-                        subjects s ON ts.subject_id = s.subject_id
-                    WHERE 
-                        t.user_id = %s
-                    GROUP BY 
-                        t.teacher_id, t.teacher_name, t.email, t.phone, t.weekly_hours, d.name;
-                        """, (session.get("user_id"),))
-            teachers = cur.fetchall()
-            return jsonify(teachers)
+        # Fixed SQL query syntax (removed extra comma, added missing column
+        cur.execute("""
+                    SELECT 
+                    t.teacher_id, 
+                    t.teacher_name, 
+                    t.email, 
+                    t.phone, 
+                    t.weekly_hours, 
+                    d.name AS department_name, 
+                    GROUP_CONCAT(CONCAT(s.name, '-', SUBSTRING(s.type, 1, 1)) SEPARATOR ', ') AS subjects
+                FROM 
+                    teachers t
+                JOIN 
+                    departments d ON t.department_id = d.department_id
+                LEFT JOIN 
+                    teacher_subjects ts ON t.teacher_id = ts.teacher_id
+                LEFT JOIN 
+                    subjects s ON ts.subject_id = s.subject_id
+                WHERE 
+                    t.user_id = %s
+                GROUP BY 
+                    t.teacher_id, t.teacher_name, t.email, t.phone, t.weekly_hours, d.name;
+                    """, (session.get("user_id"),))
+        teachers = cur.fetchall()
+        return jsonify(teachers)
     except Exception as e:
         app.logger.error(f"Error fetching teachers: {e}")
         return jsonify({'error': str(e)}), 500
+    finally:
+        cur.close()
+        mysql.close()
+
 @app.route('/api/teachers', methods=['POST'])
 @login_required
 def add_teacher():
     teacher = request.json
+    mysql = get_mysql_connection()
+    cur = mysql.cursor(dictionary=True)
     
     try:
-        with mysql_connection() as (mysql, cur):
-            # Get or create department
-            cur.execute("SELECT department_id FROM departments WHERE name = %s", (teacher.get('department'),))
-            department = cur.fetchone()
+        # Get or create department
+        cur.execute("SELECT department_id FROM departments WHERE name = %s", (teacher.get('department'),))
+        department = cur.fetchone()
         
-            if not department:
-                # Create new department
-                cur.execute("INSERT INTO departments (name) VALUES (%s)", (teacher.get('department'),))
-                mysql.commit()
-                department_id = cur.lastrowid
-            else:
-                department_id = department['department_id']
+        if not department:
+            # Create new department
+            cur.execute("INSERT INTO departments (name) VALUES (%s)", (teacher.get('department'),))
+            mysql.commit()
+            department_id = cur.lastrowid
+        else:
+            department_id = department['department_id']
         
-            # Insert teacher
-            cur.execute("""
-                INSERT INTO teachers (user_id, department_id, teacher_name, weekly_hours, email, phone) 
-                VALUES (%s, %s, %s, %s, %s, %s)
-            """, (
-                session.get('user_id'),
-                department_id,
-                teacher.get('name'),
-                teacher.get('weeklyhour'),
-                teacher.get('email'),
-                teacher.get('phone')
-            ))
+        # Insert teacher
+        cur.execute("""
+            INSERT INTO teachers (user_id, department_id, teacher_name, weekly_hours, email, phone) 
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """, (
+            session.get('user_id'),
+            department_id,
+            teacher.get('name'),
+            teacher.get('weeklyhour'),
+            teacher.get('email'),
+            teacher.get('phone')
+        ))
 
                 
-            # Log activity
-            cur.execute("""
-                INSERT INTO activity (user_id, action_type, description, entity_type, entity_id) 
-                VALUES (%s, %s, %s, %s, %s)
-            """, (
-                session.get('user_id'),
-                'CREATE',
-                f'Added teacher {teacher.get("name")}',
-                'teacher',
-                cur.lastrowid
-            ))
-            mysql.commit()
+        # Log activity
+        cur.execute("""
+            INSERT INTO activity (user_id, action_type, description, entity_type, entity_id) 
+            VALUES (%s, %s, %s, %s, %s)
+        """, (
+            session.get('user_id'),
+            'CREATE',
+            f'Added teacher {teacher.get("name")}',
+            'teacher',
+            cur.lastrowid
+        ))
+        mysql.commit()
         
-            return jsonify({'message': 'Teacher added successfully', 'teacher_id': cur.lastrowid}), 201
+        return jsonify({'message': 'Teacher added successfully', 'teacher_id': cur.lastrowid}), 201
     
     except Exception as e:
         mysql.rollback()
         print(f"Error adding teacher: {e}")
         return jsonify({'error': 'Failed to add teacher: ' + str(e)}), 500
+    finally:
+        cur.close()
+        mysql.close()
+        
 @app.route('/api/teachers/<int:teacher_id>', methods=['GET'])
 @login_required
 def get_teacher(teacher_id):
@@ -453,60 +488,65 @@ def get_teacher(teacher_id):
 @login_required
 def update_teacher(teacher_id):
     teacher = request.json
+    mysql = get_mysql_connection()
+    cur = mysql.cursor(dictionary=True)
     
     try:
-        with mysql_connection() as (mysql, cur):
-            # Get or create department
-            cur.execute("SELECT department_id FROM departments WHERE name = %s", (teacher.get('department'),))
-            department = cur.fetchone()
+        # Get or create department
+        cur.execute("SELECT department_id FROM departments WHERE name = %s", (teacher.get('department'),))
+        department = cur.fetchone()
         
-            if not department:
-                # Create new department
-                cur.execute("INSERT INTO departments (name) VALUES (%s)", (teacher.get('department'),))
-                mysql.commit()
-                department_id = cur.lastrowid
-            else:
-                department_id = department['department_id']
-        
-            # Update teacher
-            cur.execute("""
-                UPDATE teachers 
-                SET department_id = %s, teacher_name = %s, weekly_hours = %s, email = %s, phone = %s
-                WHERE teacher_id = %s AND user_id = %s
-            """, (
-                department_id,
-                teacher.get('name'),
-                teacher.get('weekly_hours'),
-                teacher.get('email'),
-                teacher.get('phone'),
-                teacher_id,
-                session.get('user_id')
-            ))
-        
-            if cur.rowcount == 0:
-                return jsonify({'error': 'Teacher not found or not authorized'}), 404
-        
+        if not department:
+            # Create new department
+            cur.execute("INSERT INTO departments (name) VALUES (%s)", (teacher.get('department'),))
             mysql.commit()
+            department_id = cur.lastrowid
+        else:
+            department_id = department['department_id']
         
-            # Log activity
-            cur.execute("""
-                INSERT INTO activity (user_id, action_type, description, entity_type, entity_id) 
-                VALUES (%s, %s, %s, %s, %s)
-            """, (
-                session.get('user_id'),
-                'UPDATE',
-                f'Updated teacher {teacher.get("name")}',
-                'teacher',
-                teacher_id
-            ))
-            mysql.commit()
+        # Update teacher
+        cur.execute("""
+            UPDATE teachers 
+            SET department_id = %s, teacher_name = %s, weekly_hours = %s, email = %s, phone = %s
+            WHERE teacher_id = %s AND user_id = %s
+        """, (
+            department_id,
+            teacher.get('name'),
+            teacher.get('weekly_hours'),
+            teacher.get('email'),
+            teacher.get('phone'),
+            teacher_id,
+            session.get('user_id')
+        ))
         
-            return jsonify({'message': 'Teacher updated successfully'})
+        if cur.rowcount == 0:
+            return jsonify({'error': 'Teacher not found or not authorized'}), 404
+        
+        mysql.commit()
+        
+        # Log activity
+        cur.execute("""
+            INSERT INTO activity (user_id, action_type, description, entity_type, entity_id) 
+            VALUES (%s, %s, %s, %s, %s)
+        """, (
+            session.get('user_id'),
+            'UPDATE',
+            f'Updated teacher {teacher.get("name")}',
+            'teacher',
+            teacher_id
+        ))
+        mysql.commit()
+        
+        return jsonify({'message': 'Teacher updated successfully'})
     
     except Exception as e:
         mysql.rollback()
         print(f"Error updating teacher: {e}")
         return jsonify({'error': 'Failed to update teacher: ' + str(e)}), 500
+    finally:
+        cur.close()
+        mysql.close()
+
 @app.route('/api/teachers/<int:teacher_id>', methods=['DELETE'])
 @login_required
 def delete_teacher(teacher_id):
@@ -554,29 +594,34 @@ def delete_teacher(teacher_id):
 @app.route('/api/classes', methods=['GET'])
 @login_required
 def get_classes():
+    mysql = get_mysql_connection()
+    cur = mysql.cursor(dictionary=True)
     try:
-        with mysql_connection() as (mysql, cur):
-            cur.execute("""
-            SELECT 
-                c.class_id, 
-                c.name AS class_name, 
-                g.name AS grade_name, 
-                cr.room_number, 
-                c.students_count,
-                GROUP_CONCAT(CONCAT(s.name, '-', SUBSTRING(s.type, 1, 1)) SEPARATOR ', ') AS subjects
-            FROM classes c
-            LEFT JOIN grades g ON c.grade_id = g.grade_id
-            LEFT JOIN classrooms cr ON c.classroom_id = cr.classroom_id
-            LEFT JOIN class_subjects cs ON c.class_id = cs.class_id
-            LEFT JOIN subjects s ON cs.subject_id = s.subject_id
-            WHERE c.user_id = %s
-            GROUP BY c.class_id, c.name, g.name, cr.room_number, c.students_count
-            """, (session.get('user_id'),))
-            classes = cur.fetchall()
-            return jsonify(classes)
+        cur.execute("""
+        SELECT 
+            c.class_id, 
+            c.name AS class_name, 
+            g.name AS grade_name, 
+            cr.room_number, 
+            c.students_count,
+            GROUP_CONCAT(CONCAT(s.name, '-', SUBSTRING(s.type, 1, 1)) SEPARATOR ', ') AS subjects
+        FROM classes c
+        LEFT JOIN grades g ON c.grade_id = g.grade_id
+        LEFT JOIN classrooms cr ON c.classroom_id = cr.classroom_id
+        LEFT JOIN class_subjects cs ON c.class_id = cs.class_id
+        LEFT JOIN subjects s ON cs.subject_id = s.subject_id
+        WHERE c.user_id = %s
+        GROUP BY c.class_id, c.name, g.name, cr.room_number, c.students_count
+        """, (session.get('user_id'),))
+        classes = cur.fetchall()
+        return jsonify(classes)
     except Exception as e:
         print(f"Error fetching classes: {e}")
         return jsonify({'error': str(e)}), 500
+    finally:
+        cur.close()
+        mysql.close()
+
 @app.route('/api/classes/<int:classes_id>',methods=['GET'])
 @login_required
 def get_class(classes_id):
@@ -625,75 +670,76 @@ def get_class(classes_id):
 @login_required
 def add_class():
     class_data = request.json
+    mysql = get_mysql_connection()
+    cur = mysql.cursor(dictionary=True)
     
     try:
-        with mysql_connection() as (mysql, cur):
-            # Start transaction
-            mysql.start_transaction()
+        # Start transaction
+        mysql.start_transaction()
         
-            # Check if grade exists
-            cur.execute("SELECT grade_id FROM grades WHERE name = %s", (class_data.get('grade'),))
-            grade = cur.fetchone()
+        # Check if grade exists
+        cur.execute("SELECT grade_id FROM grades WHERE name = %s", (class_data.get('grade'),))
+        grade = cur.fetchone()
         
-            if not grade:
-                # Create new grade if it doesn't exist
-                cur.execute("INSERT INTO grades (name) VALUES (%s)", (class_data.get('grade'),))
-                grade_id = cur.lastrowid
-            else:
-                grade_id = grade['grade_id']
+        if not grade:
+            # Create new grade if it doesn't exist
+            cur.execute("INSERT INTO grades (name) VALUES (%s)", (class_data.get('grade'),))
+            grade_id = cur.lastrowid
+        else:
+            grade_id = grade['grade_id']
         
-            # Insert class
-            cur.execute("""
-                INSERT INTO classes (user_id, name, grade_id, classroom_id, students_count) 
-                VALUES (%s, %s, %s, %s, %s)
-            """, (
-                session.get('user_id'),
-                class_data.get('name'),
-                grade_id,
-                class_data.get('classroom') if class_data.get('classroom') else None,  # Handle empty classroom selection
-                int(class_data.get('student', 0))  # Ensure integer conversion for student count
-            ))
+        # Insert class
+        cur.execute("""
+            INSERT INTO classes (user_id, name, grade_id, classroom_id, students_count) 
+            VALUES (%s, %s, %s, %s, %s)
+        """, (
+            session.get('user_id'),
+            class_data.get('name'),
+            grade_id,
+            class_data.get('classroom') if class_data.get('classroom') else None,  # Handle empty classroom selection
+            int(class_data.get('student', 0))  # Ensure integer conversion for student count
+        ))
         
-            # Get the newly created class_id
-            class_id = cur.lastrowid
+        # Get the newly created class_id
+        class_id = cur.lastrowid
         
-            # Add subjects to class_subjects table
-            if 'subjects' in class_data and class_data['subjects']:
-                subjects = class_data['subjects']
-                if isinstance(subjects, str):
-                    # If subjects is a comma-separated string, split it
-                    subjects = subjects.split(',')
+        # Add subjects to class_subjects table
+        if 'subjects' in class_data and class_data['subjects']:
+            subjects = class_data['subjects']
+            if isinstance(subjects, str):
+                # If subjects is a comma-separated string, split it
+                subjects = subjects.split(',')
             
-                for subject_id in subjects:
-                    # Skip empty strings
-                    if not subject_id:
-                        continue
+            for subject_id in subjects:
+                # Skip empty strings
+                if not subject_id:
+                    continue
                     
-                    cur.execute("""
-                        INSERT INTO class_subjects (class_id, subject_id) 
-                        VALUES (%s, %s)
-                    """, (class_id, int(subject_id)))
+                cur.execute("""
+                    INSERT INTO class_subjects (class_id, subject_id) 
+                    VALUES (%s, %s)
+                """, (class_id, int(subject_id)))
         
-            # Log activity
-            cur.execute("""
-                INSERT INTO activity (user_id, action_type, description, entity_type, entity_id) 
-                VALUES (%s, %s, %s, %s, %s)
-            """, (
-                session.get('user_id'),
-                'CREATE',
-                f'Added class {class_data.get("name")}',
-                'class',
-                class_id
-            ))
+        # Log activity
+        cur.execute("""
+            INSERT INTO activity (user_id, action_type, description, entity_type, entity_id) 
+            VALUES (%s, %s, %s, %s, %s)
+        """, (
+            session.get('user_id'),
+            'CREATE',
+            f'Added class {class_data.get("name")}',
+            'class',
+            class_id
+        ))
         
-            # Commit all changes
-            mysql.commit()
+        # Commit all changes
+        mysql.commit()
         
-            return jsonify({
-                'success': True,
-                'message': 'Class added successfully', 
-                'class_id': class_id
-            }), 201
+        return jsonify({
+            'success': True,
+            'message': 'Class added successfully', 
+            'class_id': class_id
+        }), 201
     
     except Exception as e:
         # Rollback transaction on error
@@ -704,189 +750,213 @@ def add_class():
             'error': f'Failed to add class: {str(e)}'
         }), 500
     
+    finally:
         # Close database connections
+        cur.close()
+        mysql.close()
+
 @app.route('/api/classes/<int:class_id>', methods=['PUT'])
 @login_required
 def update_class(class_id):
     # Get class data from request
     class_data = request.get_json()
     
+    mysql=get_mysql_connection()
+    cur=mysql.cursor(dictionary=True)
     try:
-        with mysql_connection() as (mysql, cur):
-            # Get class data from request
-            class_data = request.get_json()
+        # Get class data from request
+        class_data = request.get_json()
         
-            if not class_data:
-                return jsonify({"error": "No data provided"}), 400
+        if not class_data:
+            return jsonify({"error": "No data provided"}), 400
         
-            # Extract values from the request data
-            name = class_data.get('name')
-            grade_id = None
-            classroom_id = class_data.get('classroom')
-            students_count = int(class_data.get('student', 0))
-            subjects=class_data.get('subjects',[])
+        # Extract values from the request data
+        name = class_data.get('name')
+        grade_id = None
+        classroom_id = class_data.get('classroom')
+        students_count = int(class_data.get('student', 0))
+        subjects=class_data.get('subjects',[])
         
-            # Get grade_id from grade name
-            if 'grade' in class_data and class_data['grade']:
-                cur.execute("SELECT grade_id FROM grades WHERE name = %s", (class_data['grade'],))
-                grade_result = cur.fetchone()
-                if grade_result:
-                    grade_id = grade_result['grade_id']
-                else:
-                    cur.execute("INSERT INTO grades(name) VALUES(%s)",(
-                        class_data['grade'],
-                    ))
-                    mysql.commit()
-                    grade_id=cur.lastrowid
+        # Get grade_id from grade name
+        if 'grade' in class_data and class_data['grade']:
+            cur.execute("SELECT grade_id FROM grades WHERE name = %s", (class_data['grade'],))
+            grade_result = cur.fetchone()
+            if grade_result:
+                grade_id = grade_result['grade_id']
+            else:
+                cur.execute("INSERT INTO grades(name) VALUES(%s)",(
+                    class_data['grade'],
+                ))
+                mysql.commit()
+                grade_id=cur.lastrowid
         
-            # Update class information
-            update_query = """
-                UPDATE classes 
-                SET name = %s, grade_id = %s, classroom_id = %s, students_count = %s            
-                WHERE class_id = %s AND user_id=%s
-            """
+        # Update class information
+        update_query = """
+            UPDATE classes 
+            SET name = %s, grade_id = %s, classroom_id = %s, students_count = %s            
+            WHERE class_id = %s AND user_id=%s
+        """
         
-            cur.execute(update_query, (
-                name, 
-                grade_id, 
-                classroom_id if classroom_id else None, 
-                students_count, 
-                class_id,
-                session.get('user_id'),
-            ))
+        cur.execute(update_query, (
+            name, 
+            grade_id, 
+            classroom_id if classroom_id else None, 
+            students_count, 
+            class_id,
+            session.get('user_id'),
+        ))
         
-            # Delete existing subject relationships
-            cur.execute("DELETE FROM class_subjects WHERE class_id = %s", (class_id,))
-            mysql.commit()
-            # Insert new subject relationships
-            if subjects and len(subjects) > 0:
-                for subject_id in subjects:
-                    if subject_id:  
-                        cur.execute(
-                            "INSERT INTO class_subjects (class_id, subject_id) VALUES (%s, %s)",
-                            (class_id, int(subject_id),)
-                        )
+        # Delete existing subject relationships
+        cur.execute("DELETE FROM class_subjects WHERE class_id = %s", (class_id,))
+        mysql.commit()
+        # Insert new subject relationships
+        if subjects and len(subjects) > 0:
+            for subject_id in subjects:
+                if subject_id:  
+                    cur.execute(
+                        "INSERT INTO class_subjects (class_id, subject_id) VALUES (%s, %s)",
+                        (class_id, int(subject_id),)
+                    )
         
-            # Commit changes
-            mysql.commit()
+        # Commit changes
+        mysql.commit()
         
-            # Log the activity
-            cur.execute(
-                "INSERT INTO activity (user_id, action_type, description, entity_type, entity_id) VALUES (%s, %s, %s, %s, %s)",
-                (session.get("user_id"), "UPDATE", f"Updated class: {name}", "class", class_id,)
-            )
-            mysql.commit()
+        # Log the activity
+        cur.execute(
+            "INSERT INTO activity (user_id, action_type, description, entity_type, entity_id) VALUES (%s, %s, %s, %s, %s)",
+            (session.get("user_id"), "UPDATE", f"Updated class: {name}", "class", class_id,)
+        )
+        mysql.commit()
         
-            return jsonify({"success": True, "message": "Class updated successfully"})
+        return jsonify({"success": True, "message": "Class updated successfully"})
         
     except Exception as e:
         # Rollback in case of error
         mysql.rollback()
         return jsonify({"error": str(e)}), 500
+    finally:
+        cur.close()
+        mysql.close()
+        
 @app.route('/api/classes/<int:class_id>', methods=['DELETE'])
 @login_required
 def delete_class(class_id):
+    mysql = get_mysql_connection()
+    cur = mysql.cursor(dictionary=True)
 
     try:
-        with mysql_connection() as (mysql, cur):
-            cur.execute("""
-                SELECT * FROM classes
-                WHERE class_id = %s AND user_id = %s
-            """, (class_id, session.get('user_id')))
-            classs = cur.fetchone()
-            if classs is None:
-                return jsonify({"error": "Class not found"}), 404
+        cur.execute("""
+            SELECT * FROM classes
+            WHERE class_id = %s AND user_id = %s
+        """, (class_id, session.get('user_id')))
+        classs = cur.fetchone()
+        if classs is None:
+            return jsonify({"error": "Class not found"}), 404
 
-            cur.execute(
-                "DELETE FROM class_subjects WHERE class_id = %s",
-                (class_id,),
-            )
-            cur.execute(
-                "DELETE FROM classes WHERE class_id = %s AND user_id = %s",
-                (class_id, session.get("user_id")),
-            )
+        cur.execute(
+            "DELETE FROM class_subjects WHERE class_id = %s",
+            (class_id,),
+        )
+        cur.execute(
+            "DELETE FROM classes WHERE class_id = %s AND user_id = %s",
+            (class_id, session.get("user_id")),
+        )
 
-            # Log activity
-            cur.execute(
-                "INSERT INTO activity (user_id, action_type, description, entity_type, entity_id) VALUES (%s, %s, %s, %s, %s)",
-                (session.get("user_id"), "DELETE", f"Deleted class: {classs['name']}", "class", class_id),
-            )
-            mysql.commit()
-            return jsonify({"message": "Class deleted successfully"}), 200
+        # Log activity
+        cur.execute(
+            "INSERT INTO activity (user_id, action_type, description, entity_type, entity_id) VALUES (%s, %s, %s, %s, %s)",
+            (session.get("user_id"), "DELETE", f"Deleted class: {classs['name']}", "class", class_id),
+        )
+        mysql.commit()
+        return jsonify({"message": "Class deleted successfully"}), 200
     except Exception as e:
         app.logger.error(f"Error deleting class: {e}")
         mysql.rollback()
         return jsonify({"error": str(e)}), 500
+    finally:
+        cur.close()
+        mysql.close()
+    
 @app.route('/api/subjects', methods=['GET'])
 @login_required
 def get_subjects():
+    mysql = get_mysql_connection()
+    cur = mysql.cursor(dictionary=True)
     try:
-        with mysql_connection() as (mysql, cur):
-            cur.execute("""
-                SELECT s.subject_id, s.name, s.type, s.weekly_hours, d.name as department_name, t.teacher_name
-                FROM subjects s
-                JOIN departments d ON s.department_id = d.department_id
-                JOIN teacher_subjects ts ON s.subject_id = ts.subject_id
-                JOIN teachers t ON ts.teacher_id = t.teacher_id
-                WHERE s.user_id = %s
-            """, (session.get('user_id'),))
-            subjects = cur.fetchall()
-            return jsonify(subjects)
+        cur.execute("""
+            SELECT s.subject_id, s.name, s.type, s.weekly_hours, d.name as department_name, t.teacher_name
+            FROM subjects s
+            JOIN departments d ON s.department_id = d.department_id
+            JOIN teacher_subjects ts ON s.subject_id = ts.subject_id
+            JOIN teachers t ON ts.teacher_id = t.teacher_id
+            WHERE s.user_id = %s
+        """, (session.get('user_id'),))
+        subjects = cur.fetchall()
+        return jsonify(subjects)
     except Exception as e:
         print(f"Error fetching subjects: {e}")
         return jsonify({'error': str(e)}), 500
+    finally:
+        cur.close()
+        mysql.close()
+
 @app.route('/api/subjects', methods=['POST'])
 @login_required
 def add_subject():
     subject_data = request.json
+    mysql = get_mysql_connection()
+    cur = mysql.cursor(dictionary=True)
     
     try:
-        with mysql_connection() as (mysql, cur):
-            # Check if department exists
-            cur.execute("SELECT department_id FROM departments WHERE department_id = %s", (subject_data.get('department_id'),))
-            department = cur.fetchone()
-            if department is None:
-                return jsonify({'error': 'Department does not exist'}), 404
+        # Check if department exists
+        cur.execute("SELECT department_id FROM departments WHERE department_id = %s", (subject_data.get('department_id'),))
+        department = cur.fetchone()
+        if department is None:
+            return jsonify({'error': 'Department does not exist'}), 404
         
         
-            # Insert subject
-            cur.execute("""
-                INSERT INTO subjects (user_id, name, department_id, type, weekly_hours) 
-                VALUES (%s, %s, %s, %s, %s)
-            """, 
-                (session.get('user_id'),
-                subject_data.get('subject_name'),
-                subject_data.get("department_id"),
-                subject_data.get('type_subject'),
-                subject_data.get('weekly_hours'),
-            ))
-            cur.execute("""
-                        INSERT INTO teacher_subjects (teacher_id, subject_id)
-                        VALUES (%s, %s)
-                        """,(
-                            subject_data.get("teacher_id"),
-                            cur.lastrowid,
-                        ))
+        # Insert subject
+        cur.execute("""
+            INSERT INTO subjects (user_id, name, department_id, type, weekly_hours) 
+            VALUES (%s, %s, %s, %s, %s)
+        """, 
+            (session.get('user_id'),
+            subject_data.get('subject_name'),
+            subject_data.get("department_id"),
+            subject_data.get('type_subject'),
+            subject_data.get('weekly_hours'),
+        ))
+        cur.execute("""
+                    INSERT INTO teacher_subjects (teacher_id, subject_id)
+                    VALUES (%s, %s)
+                    """,(
+                        subject_data.get("teacher_id"),
+                        cur.lastrowid,
+                    ))
         
-            # Log activity
-            cur.execute("""
-                INSERT INTO activity (user_id, action_type, description, entity_type, entity_id) 
-                VALUES (%s, %s, %s, %s, %s)
-            """, (
-                session.get('user_id'),
-                'CREATE',
-                f'Added subject {subject_data.get("subject_name")}',
-                'subject',
-                cur.lastrowid,
-            ))
-            mysql.commit()
+        # Log activity
+        cur.execute("""
+            INSERT INTO activity (user_id, action_type, description, entity_type, entity_id) 
+            VALUES (%s, %s, %s, %s, %s)
+        """, (
+            session.get('user_id'),
+            'CREATE',
+            f'Added subject {subject_data.get("subject_name")}',
+            'subject',
+            cur.lastrowid,
+        ))
+        mysql.commit()
         
-            return jsonify({'message': 'Subject added successfully', 'subject_id': cur.lastrowid}), 201
+        return jsonify({'message': 'Subject added successfully', 'subject_id': cur.lastrowid}), 201
     
     except Exception as e:
         mysql.rollback()
         print(f"Error adding subject: {e}")
         return jsonify({'error': 'Failed to add subject: ' + str(e)}), 500
+    finally:
+        cur.close()
+        mysql.close()
+
 @app.route('/api/subjects/<int:subject_id>', methods=['GET'])
 @login_required
 def get_subject(subject_id):
@@ -1067,179 +1137,212 @@ def update_subject(subject_id):
 @app.route('/api/classrooms', methods=['GET'])
 @login_required
 def get_classrooms():
+    mysql = get_mysql_connection()
+    cur = mysql.cursor(dictionary=True)
     try:
-        with mysql_connection() as (mysql, cur):
-            cur.execute("""
-                SELECT classroom_id, room_number, CONCAT(UPPER(SUBSTRING(type, 1, 1)), LOWER(SUBSTRING(type, 2))) AS type, capacity, building, floor
-                FROM classrooms
-                WHERE user_id = %s
-            """, (session.get('user_id'),))
-            classrooms = cur.fetchall()
-            return jsonify(classrooms)
+        cur.execute("""
+            SELECT classroom_id, room_number, CONCAT(UPPER(SUBSTRING(type, 1, 1)), LOWER(SUBSTRING(type, 2))) AS type, capacity, building, floor
+            FROM classrooms
+            WHERE user_id = %s
+        """, (session.get('user_id'),))
+        classrooms = cur.fetchall()
+        return jsonify(classrooms)
     except Exception as e:
         print(f"Error fetching classrooms: {e}")
         return jsonify({'error': str(e)}), 500
+    finally:
+        cur.close()
+        mysql.close()
+        
+        
 @app.route('/api/classrooms/<int:classroom_id>', methods=['GET'])
 @login_required
 def get_classroom(classroom_id):
+    mysql = get_mysql_connection()
+    cur = mysql.cursor(dictionary=True)
     try:
-        with mysql_connection() as (mysql, cur):
-            cur.execute("""
-                        SELECT classroom_id, room_number, type, capacity, building, floor
-                        FROM classrooms
-                        WHERE classroom_id = %s AND user_id = %s
-                        """, (classroom_id, session.get('user_id')))
-            classroom = cur.fetchone()
-            if not classroom:
-                return jsonify({'error': 'Classroom not found'}), 404
-            return jsonify(classroom)
+        cur.execute("""
+                    SELECT classroom_id, room_number, type, capacity, building, floor
+                    FROM classrooms
+                    WHERE classroom_id = %s AND user_id = %s
+                    """, (classroom_id, session.get('user_id')))
+        classroom = cur.fetchone()
+        if not classroom:
+            return jsonify({'error': 'Classroom not found'}), 404
+        return jsonify(classroom)
     except Exception as e:
         print(f"Error fetching classroom: {e}")
         return jsonify({'error': 'Failed to fetch classroom'}), 500
+    finally:
+        cur.close()
+        mysql.close()
+
 @app.route('/api/classrooms/<int:classroom_id>', methods=['DELETE'])
 @login_required
 def delete_classroom(classroom_id):
     
+    mysql=get_mysql_connection()
+    cur = mysql.cursor(dictionary=True)
     try:
-        with mysql_connection() as (mysql, cur):
+        cur.execute("""
+            SELECT * FROM classrooms 
+            WHERE classroom_id = %s AND user_id = %s
+        """, (classroom_id, session.get('user_id')))
+        classroom = cur.fetchone()
+        if not classroom:
+            return jsonify({'error': 'Classroom not found or not authorized'}), 404
+        else:
+            # Delete classroom
             cur.execute("""
-                SELECT * FROM classrooms 
-                WHERE classroom_id = %s AND user_id = %s
+                DELETE FROM classrooms WHERE classroom_id = %s AND user_id = %s
             """, (classroom_id, session.get('user_id')))
-            classroom = cur.fetchone()
-            if not classroom:
-                return jsonify({'error': 'Classroom not found or not authorized'}), 404
-            else:
-                # Delete classroom
-                cur.execute("""
-                    DELETE FROM classrooms WHERE classroom_id = %s AND user_id = %s
-                """, (classroom_id, session.get('user_id')))
-                mysql.commit()
-            
-                # Log activity
-                cur.execute("""
-                    INSERT INTO activity (user_id, action_type, description, entity_type, entity_id) 
-                    VALUES (%s, %s, %s, %s, %s)
-                """, (
-                    session.get('user_id'),
-                    'DELETE',
-                    f'Deleted classroom {classroom["room_number"]}',
-                    'classroom',
-                    classroom_id
-                ))
-                mysql.commit()
-            return jsonify({'message': 'Classroom deleted successfully'}), 200
-    except Exception as e:
-        print(f"Error deleting classroom: {e}")
-        mysql.rollback()
-        return jsonify({'error': str(e)}), 500
-@app.route('/api/classrooms/<int:classroom_id>', methods=['PUT'])
-@login_required
-def update_classroom(classroom_id):
-    classroom_data = request.json
-    try:
-        with mysql_connection() as (mysql, cur):
-            cur.execute("""
-                SELECT * FROM classrooms
-                WHERE classroom_id = %s AND user_id = %s
-            """, (classroom_id, session.get('user_id')))
-            classroom = cur.fetchone()
-            if not classroom:
-                return jsonify({'error': 'Classroom not found or not authorized'}), 404
-            else:
-                # Convert floor to appropriate value
-                floor_value = classroom_data.get('floor', '0')
-            
-                # Update classroom
-                cur.execute("""
-                    UPDATE classrooms
-                    SET room_number = %s, capacity = %s, type = %s, building = %s, floor = %s
-                    WHERE classroom_id = %s AND user_id = %s
-                    """, (
-                        classroom_data.get('room_number'), 
-                        classroom_data.get('capacity'),
-                        classroom_data.get('type'), 
-                        classroom_data.get('building'), 
-                        floor_value, 
-                        classroom_id, 
-                        session.get('user_id')
-                    ))
-                mysql.commit()
-            
-                # Log activity
-                cur.execute("""
-                    INSERT INTO activity (user_id, action_type, description, entity_type, entity_id)
-                    VALUES (%s, %s, %s, %s, %s)
-                    """, (
-                        session.get('user_id'),
-                        'UPDATE',
-                        f'Updated classroom {classroom["room_number"]}',
-                        'classroom',
-                        classroom_id
-                    ))
-                mysql.commit()
-                return jsonify({'message': 'Classroom updated successfully'}), 200
-    except Exception as e:
-        print(f"Error updating classroom: {e}")
-        mysql.rollback()
-        return jsonify({'error': str(e)}), 500
-@app.route('/api/departments', methods=['GET'])
-@login_required
-def get_departments():
-    try:
-        with mysql_connection() as (mysql, cur):
-            cur.execute("""
-                SELECT DISTINCT d.name, d.department_id
-                FROM departments d
-                LEFT JOIN teachers t
-                ON t.department_id = d.department_id
-                WHERE t.user_id = %s
-            """, (session.get('user_id'),))
-            departments = cur.fetchall()
-            return jsonify(departments), 200
-    except Exception as e:
-        app.logger.error(f"Error fetching departments: {e}")
-        return jsonify({'error': 'Failed to retrieve departments'}), 500
-@app.route('/api/classrooms', methods=['POST'])
-@login_required
-def add_classroom():
-    classroom_data = request.json
-    
-    try:
-        with mysql_connection() as (mysql, cur):
-            # Insert classroom
-            cur.execute("""
-                INSERT INTO classrooms (user_id, room_number, type, capacity, building, floor) 
-                VALUES (%s, %s, %s, %s, %s, %s)
-            """, (
-                session.get('user_id'),
-                classroom_data.get('room_number'),
-                classroom_data.get('type'),
-                classroom_data.get('capacity'),
-                classroom_data.get('building'),
-                classroom_data.get('floor')
-            ))
             mysql.commit()
-        
+            
             # Log activity
             cur.execute("""
                 INSERT INTO activity (user_id, action_type, description, entity_type, entity_id) 
                 VALUES (%s, %s, %s, %s, %s)
             """, (
                 session.get('user_id'),
-                'CREATE',
-                f'Added classroom {classroom_data.get("room_number")}',
+                'DELETE',
+                f'Deleted classroom {classroom["room_number"]}',
                 'classroom',
-                cur.lastrowid
+                classroom_id
             ))
             mysql.commit()
+        return jsonify({'message': 'Classroom deleted successfully'}), 200
+    except Exception as e:
+        print(f"Error deleting classroom: {e}")
+        mysql.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        cur.close()
+        mysql.close()
         
-            return jsonify({'message': 'Classroom added successfully', 'classroom_id': cur.lastrowid}), 201
+@app.route('/api/classrooms/<int:classroom_id>', methods=['PUT'])
+@login_required
+def update_classroom(classroom_id):
+    classroom_data = request.json
+    mysql = get_mysql_connection()
+    cur = mysql.cursor(dictionary=True)
+    try:
+        cur.execute("""
+            SELECT * FROM classrooms
+            WHERE classroom_id = %s AND user_id = %s
+        """, (classroom_id, session.get('user_id')))
+        classroom = cur.fetchone()
+        if not classroom:
+            return jsonify({'error': 'Classroom not found or not authorized'}), 404
+        else:
+            # Convert floor to appropriate value
+            floor_value = classroom_data.get('floor', '0')
+            
+            # Update classroom
+            cur.execute("""
+                UPDATE classrooms
+                SET room_number = %s, capacity = %s, type = %s, building = %s, floor = %s
+                WHERE classroom_id = %s AND user_id = %s
+                """, (
+                    classroom_data.get('room_number'), 
+                    classroom_data.get('capacity'),
+                    classroom_data.get('type'), 
+                    classroom_data.get('building'), 
+                    floor_value, 
+                    classroom_id, 
+                    session.get('user_id')
+                ))
+            mysql.commit()
+            
+            # Log activity
+            cur.execute("""
+                INSERT INTO activity (user_id, action_type, description, entity_type, entity_id)
+                VALUES (%s, %s, %s, %s, %s)
+                """, (
+                    session.get('user_id'),
+                    'UPDATE',
+                    f'Updated classroom {classroom["room_number"]}',
+                    'classroom',
+                    classroom_id
+                ))
+            mysql.commit()
+            return jsonify({'message': 'Classroom updated successfully'}), 200
+    except Exception as e:
+        print(f"Error updating classroom: {e}")
+        mysql.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        cur.close()
+        mysql.close()
+
+@app.route('/api/departments', methods=['GET'])
+@login_required
+def get_departments():
+    mysql = get_mysql_connection()
+    cur = mysql.cursor(dictionary=True)
+    try:
+        cur.execute("""
+            SELECT DISTINCT d.name, d.department_id
+            FROM departments d
+            LEFT JOIN teachers t
+            ON t.department_id = d.department_id
+            WHERE t.user_id = %s
+        """, (session.get('user_id'),))
+        departments = cur.fetchall()
+        return jsonify(departments), 200
+    except Exception as e:
+        app.logger.error(f"Error fetching departments: {e}")
+        return jsonify({'error': 'Failed to retrieve departments'}), 500
+    finally:
+        if cur:
+            cur.close()
+        if mysql:
+            mysql.close()
+
+@app.route('/api/classrooms', methods=['POST'])
+@login_required
+def add_classroom():
+    classroom_data = request.json
+    mysql = get_mysql_connection()
+    cur = mysql.cursor(dictionary=True)
+    
+    try:
+        # Insert classroom
+        cur.execute("""
+            INSERT INTO classrooms (user_id, room_number, type, capacity, building, floor) 
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """, (
+            session.get('user_id'),
+            classroom_data.get('room_number'),
+            classroom_data.get('type'),
+            classroom_data.get('capacity'),
+            classroom_data.get('building'),
+            classroom_data.get('floor')
+        ))
+        mysql.commit()
+        
+        # Log activity
+        cur.execute("""
+            INSERT INTO activity (user_id, action_type, description, entity_type, entity_id) 
+            VALUES (%s, %s, %s, %s, %s)
+        """, (
+            session.get('user_id'),
+            'CREATE',
+            f'Added classroom {classroom_data.get("room_number")}',
+            'classroom',
+            cur.lastrowid
+        ))
+        mysql.commit()
+        
+        return jsonify({'message': 'Classroom added successfully', 'classroom_id': cur.lastrowid}), 201
     
     except Exception as e:
         mysql.rollback()
         print(f"Error adding classroom: {e}")
         return jsonify({'error': 'Failed to add classroom: ' + str(e)}), 500
+    finally:
+        cur.close()
+        mysql.close()
+
 # Timetable Generation Routes
 @app.route('/api/generate-timetable', methods=['POST'])
 @login_required
@@ -1655,107 +1758,124 @@ def get_timetables():
 @app.route('/api/absences', methods=['GET'])
 @login_required
 def get_absences():
+    mysql = get_mysql_connection()
+    cur = mysql.cursor(dictionary=True)
     
     try:
-        with mysql_connection() as (mysql, cur):
-            cur.execute("""
-                SELECT ta.absence_id, ta.start_date, ta.end_date, ta.reason, ta.status,
-                       t.teacher_name, t.teacher_id
-                FROM teacher_absences ta
-                JOIN teachers t ON ta.teacher_id = t.teacher_id
-                WHERE t.user_id = %s
-                ORDER BY ta.start_date DESC
-            """, (session.get('user_id'),))
+        cur.execute("""
+            SELECT ta.absence_id, ta.start_date, ta.end_date, ta.reason, ta.status,
+                   t.teacher_name, t.teacher_id
+            FROM teacher_absences ta
+            JOIN teachers t ON ta.teacher_id = t.teacher_id
+            WHERE t.user_id = %s
+            ORDER BY ta.start_date DESC
+        """, (session.get('user_id'),))
         
-            absences = cur.fetchall()
+        absences = cur.fetchall()
         
-            # Convert date objects to strings for JSON
-            for absence in absences:
-                absence['start_date'] = absence['start_date'].strftime('%Y-%m-%d')
-                absence['end_date'] = absence['end_date'].strftime('%Y-%m-%d')
+        # Convert date objects to strings for JSON
+        for absence in absences:
+            absence['start_date'] = absence['start_date'].strftime('%Y-%m-%d')
+            absence['end_date'] = absence['end_date'].strftime('%Y-%m-%d')
         
-            return jsonify(absences)
+        return jsonify(absences)
     
     except Exception as e:
         print(f"Error fetching absences: {e}")
         return jsonify({'error': str(e)}), 500
+    finally:
+        cur.close()
+        mysql.close()
+
 @app.route('/api/absences', methods=['POST'])
 @login_required
 def add_absence():
     absence_data = request.json
+    mysql = get_mysql_connection()
+    cur = mysql.cursor(dictionary=True)
     
     try:
-        with mysql_connection() as (mysql, cur):
-            # Verify teacher belongs to user
-            cur.execute("""
-                SELECT teacher_id FROM teachers 
-                WHERE teacher_id = %s AND user_id = %s
-            """, (absence_data.get('teacher_id'), session.get('user_id')))
+        # Verify teacher belongs to user
+        cur.execute("""
+            SELECT teacher_id FROM teachers 
+            WHERE teacher_id = %s AND user_id = %s
+        """, (absence_data.get('teacher_id'), session.get('user_id')))
         
-            if not cur.fetchone():
-                return jsonify({'error': 'Teacher not found or not authorized'}), 404
+        if not cur.fetchone():
+            return jsonify({'error': 'Teacher not found or not authorized'}), 404
         
-            # Add absence
-            cur.execute("""
-                INSERT INTO teacher_absences (teacher_id, start_date, end_date, reason, status) 
-                VALUES (%s, %s, %s, %s, %s)
-            """, (
-                absence_data.get('teacher_id'),
-                absence_data.get('start_date'),
-                absence_data.get('end_date'),
-                absence_data.get('reason'),
-                absence_data.get('status', 'pending')
-            ))
-            mysql.commit()
+        # Add absence
+        cur.execute("""
+            INSERT INTO teacher_absences (teacher_id, start_date, end_date, reason, status) 
+            VALUES (%s, %s, %s, %s, %s)
+        """, (
+            absence_data.get('teacher_id'),
+            absence_data.get('start_date'),
+            absence_data.get('end_date'),
+            absence_data.get('reason'),
+            absence_data.get('status', 'pending')
+        ))
+        mysql.commit()
         
-            # Log activity
-            cur.execute("""
-                INSERT INTO activity (user_id, action_type, description, entity_type, entity_id) 
-                VALUES (%s, %s, %s, %s, %s)
-            """, (
-                session.get('user_id'),
-                'CREATE',
-                f'Added teacher absence',
-                'absence',
-                cur.lastrowid
-            ))
-            mysql.commit()
+        # Log activity
+        cur.execute("""
+            INSERT INTO activity (user_id, action_type, description, entity_type, entity_id) 
+            VALUES (%s, %s, %s, %s, %s)
+        """, (
+            session.get('user_id'),
+            'CREATE',
+            f'Added teacher absence',
+            'absence',
+            cur.lastrowid
+        ))
+        mysql.commit()
         
-            return jsonify({'message': 'Absence recorded successfully', 'absence_id': cur.lastrowid}), 201
+        return jsonify({'message': 'Absence recorded successfully', 'absence_id': cur.lastrowid}), 201
     
     except Exception as e:
         mysql.rollback()
         print(f"Error adding absence: {e}")
         return jsonify({'error': 'Failed to add absence: ' + str(e)}), 500
+    finally:
+        cur.close()
+        mysql.close()
+
+
 @app.route('/api/absences/<int:absence_id>', methods=['DELETE'])
 @login_required
 def delete_absence(absence_id: int):
+    mysql = get_mysql_connection()
+    cur = mysql.cursor(dictionary=True)
     try:
-        with mysql_connection() as (mysql, cur):
-            # Ensure the absence belongs to a teacher owned by this user
-            cur.execute("""
-                SELECT a.absence_id FROM teacher_absences a
-                JOIN teachers t ON a.teacher_id = t.teacher_id
-                WHERE a.absence_id = %s AND t.user_id = %s
-            """, (absence_id, session.get('user_id')))
-            if not cur.fetchone():
-                return jsonify({'error': 'Absence not found or not authorized'}), 404
+        # Ensure the absence belongs to a teacher owned by this user
+        cur.execute("""
+            SELECT a.absence_id FROM teacher_absences a
+            JOIN teachers t ON a.teacher_id = t.teacher_id
+            WHERE a.absence_id = %s AND t.user_id = %s
+        """, (absence_id, session.get('user_id')))
+        if not cur.fetchone():
+            return jsonify({'error': 'Absence not found or not authorized'}), 404
 
-            cur.execute("DELETE FROM teacher_absences WHERE absence_id = %s", (absence_id,))
-            mysql.commit()
+        cur.execute("DELETE FROM teacher_absences WHERE absence_id = %s", (absence_id,))
+        mysql.commit()
 
-            # Activity log
-            cur.execute("""
-                INSERT INTO activity (user_id, action_type, description, entity_type, entity_id)
-                VALUES (%s, 'DELETE', 'Deleted teacher absence', 'absence', %s)
-            """, (session.get('user_id'), absence_id))
-            mysql.commit()
+        # Activity log
+        cur.execute("""
+            INSERT INTO activity (user_id, action_type, description, entity_type, entity_id)
+            VALUES (%s, 'DELETE', 'Deleted teacher absence', 'absence', %s)
+        """, (session.get('user_id'), absence_id))
+        mysql.commit()
 
-            return jsonify({'message': 'Absence deleted successfully'})
+        return jsonify({'message': 'Absence deleted successfully'})
     except Exception as e:
         mysql.rollback()
         app.logger.error(f"Error deleting absence {absence_id}: {e}")
         return jsonify({'error': 'Failed to delete absence'}), 500
+    finally:
+        cur.close()
+        mysql.close()
+
+
 @app.route('/api/absences/<int:absence_id>', methods=['PUT'])
 @login_required
 def update_absence(absence_id: int):
@@ -1768,47 +1888,54 @@ def update_absence(absence_id: int):
     if new_status is not None and new_status not in allowed_statuses:
         return jsonify({'error': f'Invalid status. Allowed: {allowed_statuses}'}), 422
 
+    mysql = get_mysql_connection()
+    cur = mysql.cursor(dictionary=True)
     try:
-        with mysql_connection() as (mysql, cur):
-            # Ownership check
-            cur.execute("""
-                SELECT a.absence_id FROM teacher_absences a
-                JOIN teachers t ON a.teacher_id = t.teacher_id
-                WHERE a.absence_id = %s AND t.user_id = %s
-            """, (absence_id, session.get('user_id')))
-            if not cur.fetchone():
-                return jsonify({'error': 'Absence not found or not authorized'}), 404
+        # Ownership check
+        cur.execute("""
+            SELECT a.absence_id FROM teacher_absences a
+            JOIN teachers t ON a.teacher_id = t.teacher_id
+            WHERE a.absence_id = %s AND t.user_id = %s
+        """, (absence_id, session.get('user_id')))
+        if not cur.fetchone():
+            return jsonify({'error': 'Absence not found or not authorized'}), 404
 
-            # Build update dynamically for only provided fields
-            fields, values = [], []
-            if new_status is not None:
-                fields.append("status = %s")
-                values.append(new_status)
-            if 'reason' in data:
-                fields.append("reason = %s")
-                values.append(data['reason'])
+        # Build update dynamically for only provided fields
+        fields, values = [], []
+        if new_status is not None:
+            fields.append("status = %s")
+            values.append(new_status)
+        if 'reason' in data:
+            fields.append("reason = %s")
+            values.append(data['reason'])
 
-            if not fields:
-                return jsonify({'error': 'No updatable fields provided'}), 400
+        if not fields:
+            return jsonify({'error': 'No updatable fields provided'}), 400
 
-            values.append(absence_id)
-            cur.execute(
-                f"UPDATE teacher_absences SET {', '.join(fields)} WHERE absence_id = %s",
-                values
-            )
-            mysql.commit()
+        values.append(absence_id)
+        cur.execute(
+            f"UPDATE teacher_absences SET {', '.join(fields)} WHERE absence_id = %s",
+            values
+        )
+        mysql.commit()
 
-            cur.execute("""
-                INSERT INTO activity (user_id, action_type, description, entity_type, entity_id)
-                VALUES (%s, 'UPDATE', 'Updated teacher absence', 'absence', %s)
-            """, (session.get('user_id'), absence_id))
-            mysql.commit()
+        cur.execute("""
+            INSERT INTO activity (user_id, action_type, description, entity_type, entity_id)
+            VALUES (%s, 'UPDATE', 'Updated teacher absence', 'absence', %s)
+        """, (session.get('user_id'), absence_id))
+        mysql.commit()
 
-            return jsonify({'message': 'Absence updated successfully'})
+        return jsonify({'message': 'Absence updated successfully'})
     except Exception as e:
         mysql.rollback()
         app.logger.error(f"Error updating absence {absence_id}: {e}")
         return jsonify({'error': 'Failed to update absence'}), 500
+    finally:
+        cur.close()
+        mysql.close()
+
+
+
 # ── Absence Resolution Endpoints ─────────────────────────────────────────────
 
 @app.route('/api/absences/<int:absence_id>/auto-suggest', methods=['GET'])
@@ -1816,64 +1943,70 @@ def update_absence(absence_id: int):
 def auto_suggest_replacement(absence_id: int):
     """Return ranked list of available teachers who can cover the absent teacher's classes."""
     user_id = session.get('user_id')
+    mysql = get_mysql_connection()
+    cur = mysql.cursor(dictionary=True)
     try:
-        with mysql_connection() as (mysql, cur):
-            # Fetch the absence record and verify ownership
-            cur.execute(
-                """
-                SELECT ta.absence_id, ta.teacher_id, ta.start_date, ta.end_date,
-                       t.teacher_name, t.department_name
-                FROM teacher_absences ta
-                JOIN teachers t ON ta.teacher_id = t.teacher_id
-                WHERE ta.absence_id = %s AND t.user_id = %s
-                """,
-                (absence_id, user_id),
-            )
-            absence = cur.fetchone()
-            if absence is None:
-                return jsonify({'error': 'Absence not found or not authorized'}), 404
+        # Fetch the absence record and verify ownership
+        cur.execute(
+            """
+            SELECT ta.absence_id, ta.teacher_id, ta.start_date, ta.end_date,
+                   t.teacher_name, t.department_name
+            FROM teacher_absences ta
+            JOIN teachers t ON ta.teacher_id = t.teacher_id
+            WHERE ta.absence_id = %s AND t.user_id = %s
+            """,
+            (absence_id, user_id),
+        )
+        absence = cur.fetchone()
+        if absence is None:
+            return jsonify({'error': 'Absence not found or not authorized'}), 404
 
-            # Find other teachers belonging to this user who are not absent during the period
-            cur.execute(
-                """
-                SELECT t.teacher_id, t.teacher_name, t.department_name, t.weekly_hours
-                FROM teachers t
-                WHERE t.user_id = %s
-                  AND t.teacher_id != %s
-                  AND t.teacher_id NOT IN (
-                      SELECT ta2.teacher_id FROM teacher_absences ta2
-                      WHERE ta2.start_date <= %s AND ta2.end_date >= %s
-                        AND ta2.status != 'resolved'
-                  )
-                ORDER BY
-                    -- Same department gets priority score of 1 (lower = better)
-                    CASE WHEN t.department_name = %s THEN 0 ELSE 1 END,
-                    t.weekly_hours ASC
-                LIMIT 10
-                """,
-                (
-                    user_id,
-                    absence['teacher_id'],
-                    absence['end_date'],
-                    absence['start_date'],
-                    absence['department_name'],
-                ),
-            )
-            suggestions = cur.fetchall()
+        # Find other teachers belonging to this user who are not absent during the period
+        cur.execute(
+            """
+            SELECT t.teacher_id, t.teacher_name, t.department_name, t.weekly_hours
+            FROM teachers t
+            WHERE t.user_id = %s
+              AND t.teacher_id != %s
+              AND t.teacher_id NOT IN (
+                  SELECT ta2.teacher_id FROM teacher_absences ta2
+                  WHERE ta2.start_date <= %s AND ta2.end_date >= %s
+                    AND ta2.status != 'resolved'
+              )
+            ORDER BY
+                -- Same department gets priority score of 1 (lower = better)
+                CASE WHEN t.department_name = %s THEN 0 ELSE 1 END,
+                t.weekly_hours ASC
+            LIMIT 10
+            """,
+            (
+                user_id,
+                absence['teacher_id'],
+                absence['end_date'],
+                absence['start_date'],
+                absence['department_name'],
+            ),
+        )
+        suggestions = cur.fetchall()
 
-            return jsonify({
-                'absence_id': absence_id,
-                'absent_teacher': absence['teacher_name'],
-                'period': {
-                    'start': str(absence['start_date']),
-                    'end': str(absence['end_date']),
-                },
-                'suggestions': suggestions,
-            })
+        return jsonify({
+            'absence_id': absence_id,
+            'absent_teacher': absence['teacher_name'],
+            'period': {
+                'start': str(absence['start_date']),
+                'end': str(absence['end_date']),
+            },
+            'suggestions': suggestions,
+        })
 
     except Exception as e:
         app.logger.error(f"Error fetching auto-suggestions for absence {absence_id}: {e}")
         return jsonify({'error': 'Failed to fetch suggestions'}), 500
+    finally:
+        cur.close()
+        mysql.close()
+
+
 @app.route('/api/absences/<int:absence_id>/manual-assign', methods=['POST'])
 @login_required
 def manual_assign_replacement(absence_id: int):
@@ -1884,69 +2017,75 @@ def manual_assign_replacement(absence_id: int):
         return jsonify({'error': 'replacement_teacher_id is required'}), 400
 
     replacement_id = data['replacement_teacher_id']
+    mysql = get_mysql_connection()
+    cur = mysql.cursor(dictionary=True)
     try:
-        with mysql_connection() as (mysql, cur):
-            # Verify absence ownership
-            cur.execute(
-                """
-                SELECT ta.absence_id FROM teacher_absences ta
-                JOIN teachers t ON ta.teacher_id = t.teacher_id
-                WHERE ta.absence_id = %s AND t.user_id = %s
-                """,
-                (absence_id, user_id),
-            )
-            if cur.fetchone() is None:
-                return jsonify({'error': 'Absence not found or not authorized'}), 404
+        # Verify absence ownership
+        cur.execute(
+            """
+            SELECT ta.absence_id FROM teacher_absences ta
+            JOIN teachers t ON ta.teacher_id = t.teacher_id
+            WHERE ta.absence_id = %s AND t.user_id = %s
+            """,
+            (absence_id, user_id),
+        )
+        if cur.fetchone() is None:
+            return jsonify({'error': 'Absence not found or not authorized'}), 404
 
-            # Verify replacement teacher belongs to same user
-            cur.execute(
-                "SELECT teacher_name FROM teachers WHERE teacher_id = %s AND user_id = %s",
-                (replacement_id, user_id),
-            )
-            replacement = cur.fetchone()
-            if replacement is None:
-                return jsonify({'error': 'Replacement teacher not found'}), 404
+        # Verify replacement teacher belongs to same user
+        cur.execute(
+            "SELECT teacher_name FROM teachers WHERE teacher_id = %s AND user_id = %s",
+            (replacement_id, user_id),
+        )
+        replacement = cur.fetchone()
+        if replacement is None:
+            return jsonify({'error': 'Replacement teacher not found'}), 404
 
-            # Store resolution: mark resolved and embed replacement name in reason
-            note = f"[Replaced by: {replacement['teacher_name']}]"
-            cur.execute(
-                """
-                UPDATE teacher_absences
-                SET status = 'resolved',
-                    reason = CASE
-                        WHEN reason IS NULL OR reason = '' THEN %s
-                        ELSE CONCAT(reason, ' ', %s)
-                    END
-                WHERE absence_id = %s
-                """,
-                (note, note, absence_id),
-            )
-            mysql.commit()
+        # Store resolution: mark resolved and embed replacement name in reason
+        note = f"[Replaced by: {replacement['teacher_name']}]"
+        cur.execute(
+            """
+            UPDATE teacher_absences
+            SET status = 'resolved',
+                reason = CASE
+                    WHEN reason IS NULL OR reason = '' THEN %s
+                    ELSE CONCAT(reason, ' ', %s)
+                END
+            WHERE absence_id = %s
+            """,
+            (note, note, absence_id),
+        )
+        mysql.commit()
 
-            # Activity log
-            cur.execute(
-                """
-                INSERT INTO activity (user_id, action_type, description, entity_type, entity_id)
-                VALUES (%s, 'UPDATE', %s, 'absence', %s)
-                """,
-                (
-                    user_id,
-                    f"Manually assigned {replacement['teacher_name']} as replacement",
-                    absence_id,
-                ),
-            )
-            mysql.commit()
+        # Activity log
+        cur.execute(
+            """
+            INSERT INTO activity (user_id, action_type, description, entity_type, entity_id)
+            VALUES (%s, 'UPDATE', %s, 'absence', %s)
+            """,
+            (
+                user_id,
+                f"Manually assigned {replacement['teacher_name']} as replacement",
+                absence_id,
+            ),
+        )
+        mysql.commit()
 
-            return jsonify({
-                'message': f"Assigned {replacement['teacher_name']} as replacement",
-                'absence_id': absence_id,
-                'status': 'resolved',
-            })
+        return jsonify({
+            'message': f"Assigned {replacement['teacher_name']} as replacement",
+            'absence_id': absence_id,
+            'status': 'resolved',
+        })
 
     except Exception as e:
         mysql.rollback()
         app.logger.error(f"Error assigning replacement for absence {absence_id}: {e}")
         return jsonify({'error': 'Failed to assign replacement'}), 500
+    finally:
+        cur.close()
+        mysql.close()
+
+
 @app.route('/api/absences/<int:absence_id>/reschedule', methods=['POST'])
 @login_required
 def reschedule_absence(absence_id: int):
@@ -1961,58 +2100,64 @@ def reschedule_absence(absence_id: int):
     if new_end < new_start:
         return jsonify({'error': 'new_end_date must be on or after new_start_date'}), 422
 
+    mysql = get_mysql_connection()
+    cur = mysql.cursor(dictionary=True)
     try:
-        with mysql_connection() as (mysql, cur):
-            # Verify absence ownership
-            cur.execute(
-                """
-                SELECT ta.absence_id FROM teacher_absences ta
-                JOIN teachers t ON ta.teacher_id = t.teacher_id
-                WHERE ta.absence_id = %s AND t.user_id = %s
-                """,
-                (absence_id, user_id),
-            )
-            if cur.fetchone() is None:
-                return jsonify({'error': 'Absence not found or not authorized'}), 404
+        # Verify absence ownership
+        cur.execute(
+            """
+            SELECT ta.absence_id FROM teacher_absences ta
+            JOIN teachers t ON ta.teacher_id = t.teacher_id
+            WHERE ta.absence_id = %s AND t.user_id = %s
+            """,
+            (absence_id, user_id),
+        )
+        if cur.fetchone() is None:
+            return jsonify({'error': 'Absence not found or not authorized'}), 404
 
-            # Mark absence resolved and append reschedule note to reason field
-            reschedule_note = data.get('note', f'Rescheduled to {new_start} – {new_end}')
-            note_tag = f"[{reschedule_note}]"
-            cur.execute(
-                """
-                UPDATE teacher_absences
-                SET status = 'resolved',
-                    reason = CASE
-                        WHEN reason IS NULL OR reason = '' THEN %s
-                        ELSE CONCAT(reason, ' ', %s)
-                    END
-                WHERE absence_id = %s
-                """,
-                (note_tag, note_tag, absence_id),
-            )
-            mysql.commit()
+        # Mark absence resolved and append reschedule note to reason field
+        reschedule_note = data.get('note', f'Rescheduled to {new_start} – {new_end}')
+        note_tag = f"[{reschedule_note}]"
+        cur.execute(
+            """
+            UPDATE teacher_absences
+            SET status = 'resolved',
+                reason = CASE
+                    WHEN reason IS NULL OR reason = '' THEN %s
+                    ELSE CONCAT(reason, ' ', %s)
+                END
+            WHERE absence_id = %s
+            """,
+            (note_tag, note_tag, absence_id),
+        )
+        mysql.commit()
 
-            # Activity log
-            cur.execute(
-                """
-                INSERT INTO activity (user_id, action_type, description, entity_type, entity_id)
-                VALUES (%s, 'UPDATE', %s, 'absence', %s)
-                """,
-                (user_id, reschedule_note, absence_id),
-            )
-            mysql.commit()
+        # Activity log
+        cur.execute(
+            """
+            INSERT INTO activity (user_id, action_type, description, entity_type, entity_id)
+            VALUES (%s, 'UPDATE', %s, 'absence', %s)
+            """,
+            (user_id, reschedule_note, absence_id),
+        )
+        mysql.commit()
 
-            return jsonify({
-                'message': 'Absence rescheduled successfully',
-                'absence_id': absence_id,
-                'rescheduled_to': {'start': new_start, 'end': new_end},
-                'status': 'resolved',
-            })
+        return jsonify({
+            'message': 'Absence rescheduled successfully',
+            'absence_id': absence_id,
+            'rescheduled_to': {'start': new_start, 'end': new_end},
+            'status': 'resolved',
+        })
 
     except Exception as e:
         mysql.rollback()
         app.logger.error(f"Error rescheduling absence {absence_id}: {e}")
         return jsonify({'error': 'Failed to reschedule absence'}), 500
+    finally:
+        cur.close()
+        mysql.close()
+
+
 @app.route('/api/grades', methods=['GET'])
 @login_required
 def get_grades():
@@ -2045,203 +2190,225 @@ def profile():
     
     if request.method == 'POST':
         user_data = request.get_json()
+        mysql = get_mysql_connection()
+        cursor = mysql.cursor(dictionary=True)
         
         try:
-            with mysql_connection() as (mysql, cursor):
-                # Validate required fields
-                if not all(key in user_data for key in ['name', 'email']):
-                    return jsonify({'error': 'Name and email are required'}), 400
+            # Validate required fields
+            if not all(key in user_data for key in ['name', 'email']):
+                return jsonify({'error': 'Name and email are required'}), 400
             
-                # Check if email is taken by another user
-                cursor.execute("""
-                    SELECT user_id FROM users 
-                    WHERE email = %s AND user_id != %s
-                """, (user_data['email'], user_id))
+            # Check if email is taken by another user
+            cursor.execute("""
+                SELECT user_id FROM users 
+                WHERE email = %s AND user_id != %s
+            """, (user_data['email'], user_id))
             
-                if cursor.fetchone():
-                    return jsonify({'error': 'Email is already taken'}), 409
+            if cursor.fetchone():
+                return jsonify({'error': 'Email is already taken'}), 409
             
-                # Update user profile
-                update_query = """
-                    UPDATE users 
-                    SET name = %s, email = %s, updated_at = %s 
-                    WHERE user_id = %s
-                """
-                cursor.execute(update_query, (
-                    user_data['name'],
-                    user_data['email'],
-                    datetime.now(),
-                    user_id
-                ))
+            # Update user profile
+            update_query = """
+                UPDATE users 
+                SET name = %s, email = %s, updated_at = %s 
+                WHERE user_id = %s
+            """
+            cursor.execute(update_query, (
+                user_data['name'],
+                user_data['email'],
+                datetime.now(),
+                user_id
+            ))
             
-                mysql.commit()
+            mysql.commit()
             
-                # Update session
-                session['user_name'] = user_data['name']
+            # Update session
+            session['user_name'] = user_data['name']
             
-                return jsonify({
-                    'message': 'Profile updated successfully',
-                    'user': {
-                        'name': user_data['name'],
-                        'email': user_data['email']
-                    }
-                })
+            return jsonify({
+                'message': 'Profile updated successfully',
+                'user': {
+                    'name': user_data['name'],
+                    'email': user_data['email']
+                }
+            })
             
         except Exception as e:
             mysql.rollback()
             print(f"Error updating profile: {e}")
             return jsonify({'error': 'Failed to update profile'}), 500
+        finally:
+            cursor.close()
+            mysql.close()
+
     elif request.method == "GET":
+        mysql = get_mysql_connection()
+        cursor = mysql.cursor(dictionary=True)
         
         try:
-            with mysql_connection() as (mysql, cursor):
-                query = "SELECT user_id, name, email, role, created_at FROM users WHERE user_id = %s"
-                cursor.execute(query, (user_id,))
-                user_data = cursor.fetchone()
+            query = "SELECT user_id, name, email, role, created_at FROM users WHERE user_id = %s"
+            cursor.execute(query, (user_id,))
+            user_data = cursor.fetchone()
             
-                if not user_data:
-                    return jsonify({'error': 'User not found'}), 404
-                # user_profile_picture = None
-                # if user_data['profile_picture']!=None:
-                #     user_profile_picture = user_data['profile_picture'].decode('utf-8')
+            if not user_data:
+                return jsonify({'error': 'User not found'}), 404
+            # user_profile_picture = None
+            # if user_data['profile_picture']!=None:
+            #     user_profile_picture = user_data['profile_picture'].decode('utf-8')
             
-                return jsonify({
-                    'stats': {
-                        'user_id': user_data['user_id'],
-                        'name': user_data['name'],
-                        'email': user_data['email'],
-                        'role': user_data['role'],
-                        # 'profile_picture':user_profile_picture,
-                        'joined': user_data['created_at'].strftime('%Y-%m-%d')
-                    }
-                })
+            return jsonify({
+                'stats': {
+                    'user_id': user_data['user_id'],
+                    'name': user_data['name'],
+                    'email': user_data['email'],
+                    'role': user_data['role'],
+                    # 'profile_picture':user_profile_picture,
+                    'joined': user_data['created_at'].strftime('%Y-%m-%d')
+                }
+            })
             
         except Exception as e:
             print(f"Error fetching profile: {e}")
             return jsonify({'error': 'Failed to fetch profile'}), 500
+        finally:
+            cursor.close()
+            mysql.close()
+
 @app.route('/api/change-password', methods=['POST'])
 @login_required
 def update_password():
+    mysql = get_mysql_connection()
+    cursor = mysql.cursor(dictionary=True)
 
     try:
-        with mysql_connection() as (mysql, cursor):
-            user_id = session.get('user_id')
-            if user_id is None:
-                return jsonify({'error': 'User not authenticated'}), 401
+        user_id = session.get('user_id')
+        if user_id is None:
+            return jsonify({'error': 'User not authenticated'}), 401
 
-            # Get passwords from request
-            new_password = request.json.get('new_password')
-            current_password = request.json.get('current_password')
-            if not new_password:
-                return jsonify({'error': 'New password is required'}), 400
-            if not current_password:
-                return jsonify({'error': 'Current password is required'}), 400
+        # Get passwords from request
+        new_password = request.json.get('new_password')
+        current_password = request.json.get('current_password')
+        if not new_password:
+            return jsonify({'error': 'New password is required'}), 400
+        if not current_password:
+            return jsonify({'error': 'Current password is required'}), 400
 
-            cursor.execute("""
-                SELECT password_hash FROM users
-                WHERE user_id = %s
-            """, (user_id,))
-            user = cursor.fetchone()
-            if user is None:
-                return jsonify({'error': 'User not found'}), 404
+        cursor.execute("""
+            SELECT password_hash FROM users
+            WHERE user_id = %s
+        """, (user_id,))
+        user = cursor.fetchone()
+        if user is None:
+            return jsonify({'error': 'User not found'}), 404
 
-            # Verify current password using check_password_hash
-            if not check_password_hash(user['password_hash'], current_password):
-                return jsonify({'error': 'Current password is incorrect'}), 401
+        # Verify current password using check_password_hash
+        if not check_password_hash(user['password_hash'], current_password):
+            return jsonify({'error': 'Current password is incorrect'}), 401
 
-            # Hash the new password (default pbkdf2:sha256)
-            hashed_password = generate_password_hash(new_password)
+        # Hash the new password (default pbkdf2:sha256)
+        hashed_password = generate_password_hash(new_password)
 
-            # Update password in database
-            cursor.execute("""
-                UPDATE users
-                SET password_hash = %s, updated_at = %s
-                WHERE user_id = %s
-            """, (hashed_password, datetime.now(), user_id))
+        # Update password in database
+        cursor.execute("""
+            UPDATE users
+            SET password_hash = %s, updated_at = %s
+            WHERE user_id = %s
+        """, (hashed_password, datetime.now(), user_id))
 
-            # Log activity
-            cursor.execute("""
-                INSERT INTO activity (user_id, action_type, description, entity_type, entity_id)
-                VALUES (%s, %s, %s, %s, %s)
-            """, (
-                user_id,
-                'UPDATE',
-                'Updated password',
-                'user',
-                user_id
-            ))
-            mysql.commit()
-            return jsonify({
-                'message': 'Password updated successfully',
-                'timestamp': datetime.now().isoformat()
-            })
+        # Log activity
+        cursor.execute("""
+            INSERT INTO activity (user_id, action_type, description, entity_type, entity_id)
+            VALUES (%s, %s, %s, %s, %s)
+        """, (
+            user_id,
+            'UPDATE',
+            'Updated password',
+            'user',
+            user_id
+        ))
+        mysql.commit()
+        return jsonify({
+            'message': 'Password updated successfully',
+            'timestamp': datetime.now().isoformat()
+        })
 
     except Exception as e:
         mysql.rollback()
         app.logger.error(f"Error updating password: {e}")
         return jsonify({'error': 'Failed to update password'}), 500
 
+    finally:
+        cursor.close()
+        mysql.close()
+
 @app.route('/api/profile/profile_picture', methods=['POST'])
 @login_required
 def update_profile_picture():
+    mysql = get_mysql_connection()
+    cursor = mysql.cursor()
     try:
-        with mysql_connection() as (mysql, cursor):
-            user_id = session.get('user_id')
-            if not user_id:
-                return jsonify({'error': 'User not authenticated'}), 401
+        user_id = session.get('user_id')
+        if not user_id:
+            return jsonify({'error': 'User not authenticated'}), 401
         
-            # Check if file was uploaded
-            if 'profile_picture' not in request.files:
-                return jsonify({'error': 'No file provided'}), 400
+        # Check if file was uploaded
+        if 'profile_picture' not in request.files:
+            return jsonify({'error': 'No file provided'}), 400
             
-            file = request.files['profile_picture']
+        file = request.files['profile_picture']
         
-            # Check if filename is empty
-            if file.filename == '':
-                return jsonify({'error': 'No file selected'}), 400
+        # Check if filename is empty
+        if file.filename == '':
+            return jsonify({'error': 'No file selected'}), 400
             
-            # Check file type
-            if not file.content_type.startswith('image/'):
-                return jsonify({'error': 'File must be an image'}), 400
+        # Check file type
+        if not file.content_type.startswith('image/'):
+            return jsonify({'error': 'File must be an image'}), 400
         
-            # Check file size (5MB limit)
-            file_content = file.read()
-            file_size = len(file_content)
-            file.seek(0)  # Reset file pointer to beginning
+        # Check file size (5MB limit)
+        file_content = file.read()
+        file_size = len(file_content)
+        file.seek(0)  # Reset file pointer to beginning
         
-            MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB in bytes
-            if file_size > MAX_FILE_SIZE:
-                return jsonify({'error': 'File size must be less than 5MB'}), 400
+        MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB in bytes
+        if file_size > MAX_FILE_SIZE:
+            return jsonify({'error': 'File size must be less than 5MB'}), 400
             
-            # Additional validation for image content
-            try:
-                img = Image.open(file)
-                img.verify()  # Verify it's a valid image
-                file.seek(0)  # Reset file position after verification
-            except Exception:
-                return jsonify({'error': 'Invalid image file'}), 400
+        # Additional validation for image content
+        try:
+            img = Image.open(file)
+            img.verify()  # Verify it's a valid image
+            file.seek(0)  # Reset file position after verification
+        except Exception:
+            return jsonify({'error': 'Invalid image file'}), 400
             
-            # Read file content as binary data for BLOB storage
-            image_data = file.read()
+        # Read file content as binary data for BLOB storage
+        image_data = file.read()
         
-            # Connect to database
-            mysql = get_mysql_connection()
-            cursor = mysql.cursor()
+        # Connect to database
+        mysql = get_mysql_connection()
+        cursor = mysql.cursor()
         
-            # Update profile picture in database (BLOB data type)
-            query = "UPDATE users SET profile_picture = %s WHERE user_id = %s"
-            cursor.execute(query, (image_data, user_id))
-            mysql.commit()
+        # Update profile picture in database (BLOB data type)
+        query = "UPDATE users SET profile_picture = %s WHERE user_id = %s"
+        cursor.execute(query, (image_data, user_id))
+        mysql.commit()
         
-            return jsonify({
-                'message': 'Profile picture updated successfully',
-                'timestamp': datetime.now().isoformat()
-            })
+        return jsonify({
+            'message': 'Profile picture updated successfully',
+            'timestamp': datetime.now().isoformat()
+        })
     except Exception as e:
         if mysql:
             mysql.rollback()
         app.logger.error(f"Error updating profile picture: {str(e)}")
         return jsonify({'error': 'Failed to update profile picture'}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if mysql and mysql.is_connected():
+            mysql.close()
+
 # @app.route('/profile<setting', methods=['GET', 'POST'])
 # @login_required()
 # def toggle_theme():
