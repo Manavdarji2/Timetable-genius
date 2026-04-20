@@ -2,6 +2,13 @@
 
 document.addEventListener('DOMContentLoaded', () => {
 
+    // Helper to format dates consistently (YYYY-MM-DD to Month Day, YYYY)
+    const formatDate = (dateStr) => {
+        if (!dateStr) return '-';
+        const date = new Date(dateStr);
+        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    };
+
     const initNavigation = () => {
         const sidebarItems = document.querySelectorAll('.sidebar-item');
         const pages = document.querySelectorAll('.page');
@@ -887,10 +894,26 @@ document.addEventListener('DOMContentLoaded', () => {
         const modalBody = document.getElementById('modal-body');
         const closeBtn = document.getElementById('modal-close');
         const cancelBtn = document.getElementById('modal-cancel');
-        const saveBtn = document.getElementById('modal-save');
+        let saveBtn = document.getElementById('modal-save');
+
+        // Reset save button to clear old event listeners
+        const newSaveBtn = saveBtn.cloneNode(true);
+        saveBtn.parentNode.replaceChild(newSaveBtn, saveBtn);
+        saveBtn = newSaveBtn;
 
         modalTitle.textContent = title;
+        saveBtn.textContent = 'Save'; // Default text
         
+        // Default close handlers
+        closeBtn.onclick = cancelBtn.onclick = () => {
+            modal.style.display = 'none';
+        };
+        
+        // Default save handler (can be overridden in switch)
+        saveBtn.onclick = () => {
+            modal.style.display = 'none';
+        };
+
         // Dynamic content based on type
         switch(contentType) {
 
@@ -930,7 +953,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 });
                 // Get the data from the form and log it as JSON when the save button is clicked
-                saveBtn.addEventListener('click', async() => {
+                saveBtn.onclick = async () => {
                     const formData = new FormData(document.getElementById('teacher-form')); // Properly references the form ID
                     const data = {
                         name: formData.get('name'),
@@ -952,6 +975,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         // Check if the response is successful
                         if (result.success) {
                             console.log('Teacher added successfully:', result.data);
+                            modal.style.display = 'none';
                         } else {
                             console.error('Error adding teacher:', result.error);
                         }
@@ -961,8 +985,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     }finally{
                         window.location.reload(); // Reload the page after adding a teacher
                     }
-                });
-                break;
+                };
+            break;
             case 'edit-teacher-form':
                 modalBody.innerHTML = `
                 <form id="edit-teacher-form">
@@ -1002,7 +1026,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 });
                 // Get the data from the form and log it as JSON when the save button is clicked
-                saveBtn.addEventListener('click', async() => {
+                saveBtn.onclick = async () => {
                     try {
                         const formData = new FormData(document.getElementById('edit-teacher-form')); // Properly references the form ID
                         const data = {
@@ -1021,7 +1045,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         });
                         const result = await response.json();
                         showSuccessAlert('Teacher updated successfully!');
-
+                        modal.style.display = 'none';
                     } catch (error) {
                         console.error('Error:', error);
                         showErrorAlert('Failed to update teacher. Please try again.');
@@ -1029,8 +1053,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
                         window.location.reload()
                     }
-                });
-                break;
+                };
+            break;
             case 'classes-form':
                 modalBody.innerHTML = `
                     <form id="classes-form">
@@ -1095,7 +1119,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     });
                 }
                 // Event listener for the save button
-                saveBtn.addEventListener('click', async () => {
+                saveBtn.onclick = async () => {
                     try {
                         const form = document.getElementById('classes-form');
                         
@@ -1152,7 +1176,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         console.error('Error saving class:', error);
                         showToast('Error saving class: ' + error.message, 'error');
                     }
-                });
+                };
                 
                 // Track selected subjects
                 const selectedSubjects = new Set();
@@ -1273,7 +1297,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 document.getElementById('classId').value = classId;
 
                 // Event listener for the save button
-                saveBtn.addEventListener('click', async () => {
+                saveBtn.onclick = async () => {
                 try {
                     const form = document.getElementById('edit-classes-form');
                     
@@ -1333,7 +1357,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     console.error('Error updating class:', error);
                     showToast('Error updating class: ' + error.message, 'error');
                 }
-                });
+                };
 
                 // Populate subject dropdown and classroom dropdown
                 PopulatingDataInfo();
@@ -1583,7 +1607,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         });
                     }
                 }
-                saveBtn.addEventListener("click", async()=>{
+                saveBtn.onclick = async () => {
                     const formData=new FormData(document.getElementById("subjects-form"))
 
                     const data={
@@ -1605,13 +1629,14 @@ document.addEventListener('DOMContentLoaded', () => {
                         if(result.status===200){
                             console.log(result.data)
                             showToast('Subject Added Successfully', 'success');
+                            modal.style.display = 'none';
                         }
                     }catch(error){
                         console.error(error)
                     }finally{
                         window.location.reload()
                     }
-                })
+                };
             break;
             case "edit-subject-form":
             modalBody.innerHTML = `
@@ -1688,7 +1713,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     });
                 }
             }
-            saveBtn.addEventListener('click', async () => {
+            saveBtn.onclick = async () => {
                 const formData = new FormData(document.getElementById('edit-subject-form'));
                 const data = {
                     subject_name: formData.get('subject-name'),
@@ -1710,6 +1735,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (response.ok) {
                         const result = await response.json();
                         console.log(result);
+                        modal.style.display = 'none';
                     } else {
                         // Handle non-OK responses
                         console.error('Request failed with status:', response.status);
@@ -1719,7 +1745,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }finally{
                     window.location.reload()
                 }
-            });
+            };
             break;
             case 'classroom-form':
                 modalBody.innerHTML = `
@@ -1751,7 +1777,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         </div>
                     </form>
                 `;
-                saveBtn.addEventListener('click', async() => {
+                saveBtn.onclick = async () => {
                     const formData = new FormData(document.getElementById('classroom-form'));
                     const data = {
                         room_number: formData.get('room-number'),
@@ -1773,6 +1799,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         // Check if the response is successful
                         if (result.success) {
                             console.log('Classroom added successfully:', result.data);
+                            modal.style.display = 'none';
                         } else {
                             console.error('Error adding classroom:', result.error);
                         }
@@ -1782,7 +1809,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     }finally{
                         window.location.reload(); // Reload the page after adding a classroom
                     }
-                })
+                };
                 
                 break;
             case 'edit-classroom-form':
@@ -1830,7 +1857,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 }, 0);
                 // Add event listener to the form submission
-                saveBtn.addEventListener('click', async() => {
+                saveBtn.onclick = async () => {
                     // Get the form data
                     const form = document.getElementById('edit-classroom-form');
                     const formData = new FormData(form);
@@ -1858,7 +1885,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         
                         const result = await response.json();
                         console.log(result);
-                        
+                        modal.style.display = 'none';
                         // Optionally refresh the classroom list
                         await initClassroomManagement();
                         
@@ -1868,7 +1895,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     }finally{
                         window.location.reload()
                     }
-                });
+                };
             break;
             case 'absence-form':
                 modalBody.innerHTML = `
@@ -1950,6 +1977,73 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 };
             break;   
+            case 'edit-absence-form':
+                modalBody.innerHTML = `
+                <form id="edit-absence-form-el">
+                    <div class="form-group">
+                        <label for="absence-teacher-select-edit">Teacher *</label>
+                        <select id="absence-teacher-select-edit" name="teacher_id" required>
+                            <option value="">Loading teachers...</option>
+                        </select>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="absence-start-date-edit">Start Date *</label>
+                            <input type="date" id="absence-start-date-edit" name="start_date" value="${data.start_date}" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="absence-end-date-edit">End Date *</label>
+                            <input type="date" id="absence-end-date-edit" name="end_date" value="${data.end_date}" required>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="absence-reason-edit">Reason</label>
+                        <textarea id="absence-reason-edit" name="reason" rows="3">${data.reason || ''}</textarea>
+                    </div>
+                    <div class="form-group">
+                        <label for="absence-status-edit">Status</label>
+                        <select id="absence-status-edit" name="status">
+                            <option value="pending" ${data.status === 'pending' ? 'selected' : ''}>Pending</option>
+                            <option value="resolved" ${data.status === 'resolved' ? 'selected' : ''}>Resolved</option>
+                        </select>
+                    </div>
+                </form>
+                `;
+                // Populate teacher dropdown and select current teacher
+                (async () => {
+                    const sel = document.getElementById('absence-teacher-select-edit');
+                    try {
+                        const res = await fetch('/api/teachers');
+                        if (res.ok) {
+                            const teachers = await res.json();
+                            sel.innerHTML = '<option value="">Select Teacher</option>' +
+                                teachers.map(t => `<option value="${t.teacher_id}" ${t.teacher_id == data.teacher_id ? 'selected' : ''}>${t.teacher_name}</option>`).join('');
+                        }
+                    } catch (_) {}
+                })();
+                saveBtn.textContent = 'Update Absence';
+                saveBtn.onclick = async () => {
+                    const teacherId = document.getElementById('absence-teacher-select-edit').value;
+                    const startDate = document.getElementById('absence-start-date-edit').value;
+                    const endDate = document.getElementById('absence-end-date-edit').value;
+                    const reason = document.getElementById('absence-reason-edit').value;
+                    const status = document.getElementById('absence-status-edit').value;
+
+                    try {
+                        const res = await fetch(`/api/absences/${updated_id}`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ teacher_id: teacherId, start_date: startDate, end_date: endDate, reason, status })
+                        });
+                        if (!res.ok) throw new Error('Failed to update absence');
+                        showSuccessAlert('Absence updated successfully.');
+                        modal.style.display = 'none';
+                        if (typeof window.loadAbsences === 'function') await window.loadAbsences();
+                    } catch (err) {
+                        showErrorAlert(`Error: ${err.message}`);
+                    }
+                };
+            break;
             case "change-password-form":
                 modalBody.innerHTML = `
                 <form id="change-password-form">
@@ -2013,11 +2107,6 @@ document.addEventListener('DOMContentLoaded', () => {
         closeBtn.onclick = cancelBtn.onclick = () => {
             modal.style.display = 'none';
         };
-
-        saveBtn.onclick = async () => {
-            // Default handler — individual switch cases override this before the modal opens.
-            modal.style.display = 'none';
-        };
     };
 
     // Alert Handling — now wired to toast system
@@ -2036,19 +2125,20 @@ document.addEventListener('DOMContentLoaded', () => {
         timetableBody.innerHTML = `<tr><td colspan="6" class="error-message">${message}</td></tr>`;
     };
 
-    const populateTimetableDropdown = (timetableParams) => {
+    const populateTimetableDropdown = (timetableParams, generatedValues) => {
         const timetableSelect = document.getElementById('timetable-select');
         timetableSelect.innerHTML = '';
 
-        timetableParams.forEach((timetable, index) => {
+        timetableParams.forEach((timetable) => {
             const option = document.createElement('option');
-            option.value = index;
+            option.value = timetable._id;
             option.textContent = `${timetable.timetable_name} - ${timetable.timetable_description}`;
             timetableSelect.appendChild(option);
         });
 
         timetableSelect.addEventListener('change', () => {
-            const selectedIndex = parseInt(timetableSelect.value);
+            const selectedId = timetableSelect.value;
+            const selectedIndex = timetableParams.findIndex(t => t._id === selectedId);
             const selectedTimetableParams = timetableParams[selectedIndex];
             const selectedGeneratedValues = generatedValues[selectedIndex];
             updateFilters(selectedTimetableParams, selectedGeneratedValues);
@@ -2147,9 +2237,13 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const renderTimetable = (timetableParams, generatedValues) => {
-        const selectedTimetableIndex = parseInt(document.getElementById('timetable-select').value) || 0;
-        const selectedTimetableParams = timetableParams[selectedTimetableIndex];
-        const selectedGeneratedValues = generatedValues[selectedTimetableIndex];
+        const selectedId = document.getElementById('timetable-select').value;
+        const selectedTimetableIndex = timetableParams.findIndex(t => t._id === selectedId);
+        
+        // Use the first one as default if index not found
+        const idx = selectedTimetableIndex === -1 ? 0 : selectedTimetableIndex;
+        const selectedTimetableParams = timetableParams[idx];
+        const selectedGeneratedValues = generatedValues[idx];
 
         if (!selectedGeneratedValues) {
             showError('No timetable data available');
@@ -2434,8 +2528,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 // Action buttons — no Resolve for already resolved rows
                 const actionBtns = absence.status === 'resolved'
-                    ? `<button class="btn btn-secondary btn-sm" onclick="deleteAbsence(${absence.absence_id})">Delete</button>`
+                    ? `<button class="btn btn-secondary btn-sm" onclick="editAbsence(${absence.absence_id})">Edit</button>
+                       <button class="btn btn-secondary btn-sm" onclick="deleteAbsence(${absence.absence_id})">Delete</button>`
                     : `<button class="btn btn-primary btn-sm" onclick="resolveAbsence(${absence.absence_id})" title="AI suggest / manual assign / reschedule">Resolve</button>
+                       <button class="btn btn-secondary btn-sm" onclick="editAbsence(${absence.absence_id})">Edit</button>
                        <button class="btn btn-secondary btn-sm" onclick="deleteAbsence(${absence.absence_id})">Delete</button>`;
 
                 // Visually highlight active absences
@@ -2451,7 +2547,11 @@ document.addEventListener('DOMContentLoaded', () => {
                         <span style="font-size:0.75rem;color:var(--dark-gray);display:block;">${durationLabel}</span>
                     </td>
                     <td style="max-width:220px;word-break:break-word;">${reasonDisplay}</td>
-                    <td style="white-space:nowrap;">${durationLabel}</td>
+                    <td style="text-align:center;">
+                        <span style="font-weight:600;padding:2px 8px;border-radius:12px;font-size:0.8rem;background:${absence.affected_count > 0 ? 'rgba(231, 76, 60, 0.1)' : 'rgba(108, 117, 125, 0.1)'};color:${absence.affected_count > 0 ? '#e74c3c' : '#6c757d'};">
+                            ${absence.affected_count || 0} classes
+                        </span>
+                    </td>
                     <td>${statusBadge}</td>
                     <td>
                         <div class="teacher-actions" style="display:flex;gap:0.4rem;flex-wrap:wrap;">
@@ -2504,12 +2604,55 @@ document.addEventListener('DOMContentLoaded', () => {
         };
 
         // "Resolve" row button — shows the solutions panel for the chosen absence
-        window.resolveAbsence = (absenceId) => {
+        window.resolveAbsence = async (absenceId) => {
             activeAbsenceId = absenceId;
             const panel = document.getElementById('absence-solutions');
             if (panel) {
                 panel.style.display = 'block';
                 panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                
+                // Fetch and display affected classes
+                const classesContainer = document.getElementById('affected-classes-container');
+                if (classesContainer) {
+                    classesContainer.innerHTML = '<p style="text-align:center;padding:1rem;">Finding affected classes...</p>';
+                    try {
+                        const res = await fetch(`/api/absences/${absenceId}/affected-classes`);
+                        if (!res.ok) throw new Error('Failed to fetch affected classes');
+                        const data = await res.json();
+                        
+                        if (!data.affected_classes || data.affected_classes.length === 0) {
+                            classesContainer.innerHTML = `
+                                <div style="background:var(--surface-2,#f8f9fa);padding:1rem;border-radius:8px;text-align:center;border:1px dashed var(--border-color);">
+                                    <p style="color:var(--dark-gray);margin:0;">No scheduled classes found for <strong>${data.teacher_name}</strong> during this period.</p>
+                                </div>`;
+                        } else {
+                            const listHtml = data.affected_classes.map(c => `
+                                <div style="background:white;padding:0.75rem;border-radius:6px;border:1px solid var(--border-color);margin-bottom:0.5rem;display:flex;justify-content:space-between;align-items:center;">
+                                    <div>
+                                        <strong style="display:block;color:var(--primary-color);">${c.class_name}</strong>
+                                        <span style="font-size:0.85rem;color:var(--dark-gray);">${c.day} | ${c.slot}</span>
+                                    </div>
+                                    <div style="text-align:right;">
+                                        <span style="font-size:0.85rem;font-weight:600;display:block;">${c.subject}</span>
+                                        <span style="font-size:0.75rem;color:var(--dark-gray);">Room: ${c.classroom}</span>
+                                    </div>
+                                </div>`).join('');
+                            
+                            classesContainer.innerHTML = `
+                                <div style="margin-bottom:1.5rem;">
+                                    <h4 style="margin-bottom:0.75rem;font-size:0.95rem;color:var(--text-color);display:flex;align-items:center;gap:8px;">
+                                        <i class="fas fa-list-ul" style="color:var(--primary-color);"></i>
+                                        Classes Needing Resolution for ${data.teacher_name}
+                                    </h4>
+                                    <div style="max-height:300px;overflow-y:auto;padding-right:5px;">
+                                        ${listHtml}
+                                    </div>
+                                </div>`;
+                        }
+                    } catch (err) {
+                        classesContainer.innerHTML = `<p style="color:var(--danger-color);padding:1rem;">Error: ${err.message}</p>`;
+                    }
+                }
             }
         };
 
@@ -2742,6 +2885,18 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
 
+        window.editAbsence = async (absenceId) => {
+            try {
+                const res = await fetch(`/api/absences/${absenceId}`);
+                if (!res.ok) throw new Error('Failed to fetch absence details');
+                const data = await res.json();
+                hideSolutionsPanel();
+                openModal('Edit Absence', 'edit-absence-form', data, null, absenceId);
+            } catch (err) {
+                showErrorAlert(`Error: ${err.message}`);
+            }
+        };
+
         // Filter event listeners
         if (dateFilter) dateFilter.addEventListener('change', filterAbsences);
         if (teacherFilter) teacherFilter.addEventListener('change', filterAbsences);
@@ -2753,16 +2908,68 @@ document.addEventListener('DOMContentLoaded', () => {
     // Export and Print
     const initExportPrint = () => {
         const exportExcelBtn = document.getElementById('export-excel-btn');
+        const exportPdfBtn = document.getElementById('export-pdf-btn');
         const printBtn = document.getElementById('print-timetable-btn');
+        
+        const exportTeachersBtn = document.getElementById('export-teachers-btn');
+        const exportClassesBtn = document.getElementById('export-classes-btn');
+        const exportSubjectsBtn = document.getElementById('export-subjects-btn');
 
-        exportExcelBtn.addEventListener('click', () => {
-            // Placeholder for Excel export logic
-            showSuccessAlert('Timetable exported to Excel');
-        });
+        const getTimetableExportParams = () => {
+            const timetableId = document.getElementById('timetable-select').value;
+            const categoryType = document.getElementById('view-type').value;
+            let filterValue = 'all';
+            
+            if (categoryType === 'class') {
+                filterValue = document.getElementById('class-filter').value;
+            } else if (categoryType === 'teacher') {
+                filterValue = document.getElementById('teacher-filter').value;
+            } else if (categoryType === 'classroom') {
+                filterValue = document.getElementById('classroom-filter').value;
+            }
+            return { id: timetableId, category_type: categoryType, filter_value: filterValue };
+        };
 
-        printBtn.addEventListener('click', () => {
-            window.print();
-        });
+        if (exportExcelBtn) {
+            exportExcelBtn.addEventListener('click', () => {
+                const params = getTimetableExportParams();
+                window.location.href = `/api/export/excel?type=timetable&id=${params.id}&category_type=${params.category_type}&filter_value=${encodeURIComponent(params.filter_value)}`;
+            });
+        }
+
+        if (exportPdfBtn) {
+            exportPdfBtn.addEventListener('click', () => {
+                const params = getTimetableExportParams();
+                window.location.href = `/api/export/pdf?id=${params.id}&category_type=${params.category_type}&filter_value=${encodeURIComponent(params.filter_value)}`;
+            });
+        }
+
+        if (exportTeachersBtn) {
+            exportTeachersBtn.addEventListener('click', () => {
+                const dept = document.getElementById('teacher-department-filter').value;
+                window.location.href = `/api/export/excel?type=teachers&filter_value=${encodeURIComponent(dept)}`;
+            });
+        }
+
+        if (exportClassesBtn) {
+            exportClassesBtn.addEventListener('click', () => {
+                const grade = document.getElementById('class-grade-filter').value;
+                window.location.href = `/api/export/excel?type=classes&filter_value=${encodeURIComponent(grade)}`;
+            });
+        }
+
+        if (exportSubjectsBtn) {
+            exportSubjectsBtn.addEventListener('click', () => {
+                const dept = document.getElementById('subject-department-filter').value;
+                window.location.href = `/api/export/excel?type=subjects&filter_value=${encodeURIComponent(dept)}`;
+            });
+        }
+
+        if (printBtn) {
+            printBtn.addEventListener('click', () => {
+                window.print();
+            });
+        }
     };
 
     // Logout

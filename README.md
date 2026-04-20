@@ -772,7 +772,7 @@ The dashboard uses a sidebar navigation to switch between sections:
 
 ## License
 
-MIT License — see [`mit_license.md`](mit_license~`.md) for full text with AI usage addendum.
+MIT License — see [`mit_license.md`](mit_license.md) for full text with AI usage addendum.
 
 **Key additions to standard MIT:**
 - Users must obtain their own Gemini API key and comply with Google's AI terms

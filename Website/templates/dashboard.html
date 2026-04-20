@@ -139,6 +139,7 @@
                         <select id="teacher-department-filter">
                             <option value="All Department">All Department</option>
                         </select>
+                        <button class="btn-secondary" id="export-teachers-btn"><i class="fas fa-file-excel"></i> Export to Excel</button>
                     </div>
                     <div class="data-table-container">
                         <table class="data-table" id="teachers-table">
@@ -170,6 +171,7 @@
                         <select id="class-grade-filter">
                             <option value="All">All Grades</option>
                         </select>
+                        <button class="btn-secondary" id="export-classes-btn"><i class="fas fa-file-excel"></i> Export to Excel</button>
                     </div>
                     <div class="data-table-container">
                         <table class="data-table" id="classes-table">
@@ -202,6 +204,7 @@
                             <option value="">All Departments</option>
                             
                         </select>
+                        <button class="btn-secondary" id="export-subjects-btn"><i class="fas fa-file-excel"></i> Export to Excel</button>
                     </div>
                     <div class="data-table-container">
                         <table class="data-table" id="subjects-table">
@@ -369,6 +372,7 @@
                         <h2>View Timetables</h2>
                         <div class="view-actions">
                             <button class="btn-secondary" id="export-excel-btn"><i class="fas fa-file-excel"></i> Export to Excel</button>
+                        <button class="btn-secondary" id="export-pdf-btn"><i class="fas fa-file-pdf"></i> Export to PDF</button>
                             <button class="btn-secondary" id="print-timetable-btn"><i class="fas fa-print"></i> Print</button>
                         </div>
                     </div>
@@ -490,6 +494,10 @@
 
                     <div class="absence-solutions" id="absence-solutions" style="display:none;">
                         <h3>Resolution Options</h3>
+
+                        <!-- Dynamic Affected Classes List -->
+                        <div id="affected-classes-container"></div>
+
                         <div class="solutions-container">
                             <div class="solution-card">
                                 <h4>Auto-Suggest</h4>

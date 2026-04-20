@@ -1,9 +1,12 @@
-from flask import Flask, render_template, request, jsonify, session, redirect, url_for
+from flask import Flask, render_template, request, jsonify, session, redirect, url_for, send_file
 from flask_cors import CORS
 import os
 import json
 import logging
+import io
 import pymongo
+from bson import ObjectId
+from fpdf import FPDF
 import mysql.connector
 from mysql.connector import pooling
 from contextlib import contextmanager
@@ -16,7 +19,7 @@ import pandas as pd
 from Final_test import Generate_test_timetable
 from dotenv import load_dotenv
 load_dotenv()
-app = Flask(__name__, template_folder="templates", static_folder='Static')
+app = Flask(__name__, template_folder="templates", static_folder='static')
 CORS(app)
 app.secret_key = os.urandom(24)
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
@@ -91,6 +94,189 @@ def login_required(f):
             return redirect(url_for('login'))
         return f(*args, **kwargs)
     return decorated_function
+
+def parse_time_robustly(time_str):
+    """Parses time strings like '8am', '8:00am', '08:00am' robustly."""
+    time_str = time_str.lower().strip()
+    formats = ['%I:%M%p', '%I%p', '%H:%M', '%H']
+    for fmt in formats:
+        try:
+            return datetime.strptime(time_str, fmt)
+        except ValueError:
+            continue
+    # Fallback to a very simple parse if nothing else works
+    try:
+        if 'am' in time_str or 'pm' in time_str:
+            parts = time_str.replace('am', '').replace('pm', '').split(':')
+            hour = int(parts[0])
+            minute = int(parts[1]) if len(parts) > 1 else 0
+            if 'pm' in time_str and hour < 12: hour += 12
+            if 'am' in time_str and hour == 12: hour = 0
+            return datetime(1900, 1, 1, hour, minute)
+    except Exception:
+        pass
+    return datetime(1900, 1, 1)
+
+class TimetablePDF(FPDF):
+    def header(self):
+        # Logo
+        try:
+            logo_path = os.path.join(app.static_folder, 'icon.jpg')
+            if os.path.exists(logo_path):
+                self.image(logo_path, 10, 8, 33)
+        except Exception:
+            pass
+        # Arial bold 15
+        self.set_font('Helvetica', 'B', 15)
+        # Move to the right
+        self.cell(80)
+        # Title
+        # Fix for deprecation ln=0 (use new_x and new_y)
+        self.cell(30, 10, 'Timetable Genius', border=0, align='C')
+        # Line break
+        self.ln(20)
+
+    def footer(self):
+        # Position at 1.5 cm from bottom
+        self.set_y(-15)
+        # Arial italic 8
+        self.set_font('Helvetica', 'I', 8)
+        # Page number
+        self.cell(0, 10, 'Page ' + str(self.page_no()) + '/{nb}', border=0, align='C')
+
+@app.route('/api/export/pdf', methods=['GET'])
+@login_required
+def export_pdf():
+    user_id = session.get('user_id')
+    timetable_id = request.args.get('id')
+    category_type = request.args.get('category_type', 'class')
+    filter_value = request.args.get('filter_value')
+
+    try:
+        mongo_db = get_mongodb_connection()
+        if not timetable_id or timetable_id == 'undefined':
+            timetable_doc = mongo_db["timetables"].find_one({"user_id": user_id}, sort=[("generated_at", -1)])
+        else:
+            timetable_doc = mongo_db["timetables"].find_one({"_id": ObjectId(timetable_id), "user_id": user_id})
+        
+        if not timetable_doc:
+            return jsonify({'error': 'Timetable not found'}), 404
+        
+        generated_timetable = timetable_doc['generated_timetable']
+        if isinstance(generated_timetable, str):
+            generated_timetable = json.loads(generated_timetable)
+        
+        pdf = TimetablePDF(orientation='L', unit='mm', format='A4')
+        pdf.alias_nb_pages()
+        
+        # Define the classes/entities to include
+        if category_type == 'class':
+            if filter_value and filter_value.lower() != 'all':
+                target_class = next((k for k in generated_timetable.keys() if k.lower() == filter_value.lower()), None)
+                entities = [target_class] if target_class else []
+            else:
+                entities = list(generated_timetable.keys())
+        elif category_type == 'teacher':
+            entities = [filter_value]
+        elif category_type == 'classroom':
+            entities = [filter_value]
+        else:
+            entities = []
+
+        for entity_name in entities:
+            if not entity_name: continue
+            
+            pdf.add_page()
+            pdf.set_font('Helvetica', 'B', 12)
+            # Fix for deprecation ln=1 (use new_x and new_y implied by ln() or specific parameters)
+            pdf.cell(0, 10, f"{category_type.capitalize()}: {entity_name}", border=0, align='C', new_x="LMARGIN", new_y="NEXT")
+            pdf.ln(5)
+
+            # Get schedule data
+            if category_type == 'class':
+                schedule_data = generated_timetable.get(entity_name)
+            elif category_type == 'teacher':
+                schedule_data = filter_timetable_by(generated_timetable, entity_name, 'teacher')
+            elif category_type == 'classroom':
+                schedule_data = filter_timetable_by(generated_timetable, entity_name, 'classroom')
+            
+            if not schedule_data:
+                pdf.cell(0, 10, "No data available", border=0, new_x="LMARGIN", new_y="NEXT")
+                continue
+
+            days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
+            all_slots = set()
+            for day in days:
+                if day in schedule_data:
+                    all_slots.update(schedule_data[day].keys())
+            
+            # Use robust time parsing for sorting
+            sorted_slots = sorted(list(all_slots), key=lambda x: parse_time_robustly(x.split(' to ')[0]))
+
+            # Table Header
+            pdf.set_font('Helvetica', 'B', 10)
+            col_width = (pdf.w - 20) / 6.0
+            pdf.cell(col_width, 10, 'Time', border=1, align='C')
+            for day in days:
+                pdf.cell(col_width, 10, day, border=1, align='C')
+            pdf.ln()
+
+            # Table Rows
+            pdf.set_font('Helvetica', '', 8)
+            for slot in sorted_slots:
+                # Calculate required height for this row
+                max_lines = 1
+                row_contents = []
+                for day in days:
+                    cell = schedule_data.get(day, {}).get(slot, '-')
+                    if isinstance(cell, dict):
+                        content = f"{cell['subject']}\n({cell.get('classroom', cell.get('className', ''))})"
+                    else:
+                        content = str(cell)
+                    row_contents.append(content)
+                    max_lines = max(max_lines, content.count('\n') + 1)
+                
+                row_height = max_lines * 5
+                
+                # Check for page break
+                if pdf.get_y() + row_height > pdf.page_break_trigger:
+                    pdf.add_page()
+                    # Re-draw header
+                    pdf.set_font('Helvetica', 'B', 10)
+                    pdf.cell(col_width, 10, 'Time', border=1, align='C')
+                    for day in days:
+                        pdf.cell(col_width, 10, day, border=1, align='C')
+                    pdf.ln()
+                    pdf.set_font('Helvetica', '', 8)
+
+                # Draw cells
+                x_start = pdf.get_x()
+                y_start = pdf.get_y()
+                pdf.multi_cell(col_width, 5, slot, border=1, align='C')
+                pdf.set_xy(x_start + col_width, y_start)
+                
+                for content in row_contents:
+                    curr_x = pdf.get_x()
+                    pdf.multi_cell(col_width, 5, content, border=1, align='C')
+                    pdf.set_xy(curr_x + col_width, y_start)
+                pdf.ln(row_height)
+
+            # Add Total Weekly Hours at the end of each entity's schedule
+            total_lectures = sum(1 for day in days for slot in sorted_slots if isinstance(schedule_data.get(day, {}).get(slot), dict))
+            lecture_params = timetable_doc.get('parameters', {})
+            lecture_duration = int(lecture_params.get('lecture_duration', 45) if lecture_params else 45)
+            total_hours = (total_lectures * lecture_duration) / 60.0
+            
+            pdf.ln(5)
+            pdf.set_font('Helvetica', 'B', 10)
+            pdf.cell(0, 10, f"Total Weekly Hours: {total_hours:.2f} hrs", border=0, align='R', new_x="LMARGIN", new_y="NEXT")
+
+        pdf_out = pdf.output(dest='S')
+        return send_file(io.BytesIO(pdf_out), as_attachment=True, download_name=f"timetable_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf", mimetype='application/pdf')
+
+    except Exception as e:
+        app.logger.error(f"PDF Export error: {e}")
+        return jsonify({'error': str(e)}), 500
 
 # Routes
 @app.route('/')
@@ -1655,7 +1841,6 @@ def get_timetables():
 @app.route('/api/absences', methods=['GET'])
 @login_required
 def get_absences():
-    
     try:
         with mysql_connection() as (mysql, cur):
             cur.execute("""
@@ -1668,16 +1853,23 @@ def get_absences():
             """, (session.get('user_id'),))
         
             absences = cur.fetchall()
+            user_id = session.get('user_id')
         
-            # Convert date objects to strings for JSON
+            # Convert date objects to strings and add affected count
             for absence in absences:
-                absence['start_date'] = absence['start_date'].strftime('%Y-%m-%d')
-                absence['end_date'] = absence['end_date'].strftime('%Y-%m-%d')
+                sd = absence['start_date'].strftime('%Y-%m-%d')
+                ed = absence['end_date'].strftime('%Y-%m-%d')
+                absence['start_date'] = sd
+                absence['end_date'] = ed
+                
+                # Fetch affected classes count
+                affected = get_affected_classes(absence['teacher_name'], sd, ed, user_id)
+                absence['affected_count'] = len(affected)
         
             return jsonify(absences)
     
     except Exception as e:
-        print(f"Error fetching absences: {e}")
+        app.logger.error(f"Error fetching absences: {e}")
         return jsonify({'error': str(e)}), 500
 @app.route('/api/absences', methods=['POST'])
 @login_required
@@ -1727,6 +1919,34 @@ def add_absence():
         mysql.rollback()
         print(f"Error adding absence: {e}")
         return jsonify({'error': 'Failed to add absence: ' + str(e)}), 500
+@app.route('/api/absences/<int:absence_id>', methods=['GET'])
+@login_required
+def get_absence(absence_id: int):
+    try:
+        with mysql_connection() as (mysql, cur):
+            cur.execute("""
+                SELECT ta.*, t.teacher_name 
+                FROM teacher_absences ta
+                JOIN teachers t ON ta.teacher_id = t.teacher_id
+                WHERE ta.absence_id = %s AND t.user_id = %s
+            """, (absence_id, session.get('user_id')))
+            absence = cur.fetchone()
+            if not absence:
+                return jsonify({'error': 'Absence not found or not authorized'}), 404
+            
+            # Convert date objects to strings
+            absence['start_date'] = absence['start_date'].strftime('%Y-%m-%d')
+            absence['end_date'] = absence['end_date'].strftime('%Y-%m-%d')
+            if 'created_at' in absence and absence['created_at']:
+                absence['created_at'] = absence['created_at'].isoformat()
+            if 'updated_at' in absence and absence['updated_at']:
+                absence['updated_at'] = absence['updated_at'].isoformat()
+                
+            return jsonify(absence)
+    except Exception as e:
+        app.logger.error(f"Error fetching absence {absence_id}: {e}")
+        return jsonify({'error': 'Failed to fetch absence'}), 500
+
 @app.route('/api/absences/<int:absence_id>', methods=['DELETE'])
 @login_required
 def delete_absence(absence_id: int):
@@ -1756,17 +1976,13 @@ def delete_absence(absence_id: int):
         mysql.rollback()
         app.logger.error(f"Error deleting absence {absence_id}: {e}")
         return jsonify({'error': 'Failed to delete absence'}), 500
+
 @app.route('/api/absences/<int:absence_id>', methods=['PUT'])
 @login_required
 def update_absence(absence_id: int):
     data = request.get_json()
     if not data:
         return jsonify({'error': 'Request body required'}), 400
-
-    allowed_statuses = {'pending', 'resolved'}
-    new_status = data.get('status')
-    if new_status is not None and new_status not in allowed_statuses:
-        return jsonify({'error': f'Invalid status. Allowed: {allowed_statuses}'}), 422
 
     try:
         with mysql_connection() as (mysql, cur):
@@ -1779,14 +1995,31 @@ def update_absence(absence_id: int):
             if not cur.fetchone():
                 return jsonify({'error': 'Absence not found or not authorized'}), 404
 
-            # Build update dynamically for only provided fields
+            # Build update dynamically for all provided fields
             fields, values = [], []
-            if new_status is not None:
-                fields.append("status = %s")
-                values.append(new_status)
+            
+            if 'teacher_id' in data:
+                fields.append("teacher_id = %s")
+                values.append(data['teacher_id'])
+            
+            if 'start_date' in data:
+                fields.append("start_date = %s")
+                values.append(data['start_date'])
+                
+            if 'end_date' in data:
+                fields.append("end_date = %s")
+                values.append(data['end_date'])
+                
             if 'reason' in data:
                 fields.append("reason = %s")
                 values.append(data['reason'])
+                
+            if 'status' in data:
+                allowed_statuses = {'pending', 'resolved'}
+                if data['status'] not in allowed_statuses:
+                    return jsonify({'error': f"Invalid status. Allowed: {allowed_statuses}"}), 422
+                fields.append("status = %s")
+                values.append(data['status'])
 
             if not fields:
                 return jsonify({'error': 'No updatable fields provided'}), 400
@@ -1810,6 +2043,76 @@ def update_absence(absence_id: int):
         app.logger.error(f"Error updating absence {absence_id}: {e}")
         return jsonify({'error': 'Failed to update absence'}), 500
 # ── Absence Resolution Endpoints ─────────────────────────────────────────────
+
+def get_affected_classes(teacher_name, start_date, end_date, user_id):
+    """Finds all classes/lectures for a teacher between start_date and end_date."""
+    mongo_db = get_mongodb_connection()
+    # Get all timetables for this user
+    timetables = mongo_db["timetables"].find({"user_id": user_id})
+    
+    affected = []
+    days_of_week = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+    
+    # Iterate through all generated timetables to find the teacher's schedule
+    for doc in timetables:
+        generated = doc.get('generated_timetable', {})
+        if isinstance(generated, str):
+            try:
+                generated = json.loads(generated)
+            except:
+                continue
+        
+        for class_name, schedule in generated.items():
+            for day, slots in schedule.items():
+                for slot, details in slots.items():
+                    if teacher_name.lower() in details.get('subject', '').lower():
+                        affected.append({
+                            'class_name': class_name,
+                            'day': day,
+                            'slot': slot,
+                            'subject': details.get('subject'),
+                            'classroom': details.get('classroom')
+                        })
+    
+    # Deduplicate by subject, class, day, slot
+    unique_affected = []
+    seen = set()
+    for item in affected:
+        key = (item['class_name'], item['day'], item['slot'])
+        if key not in seen:
+            unique_affected.append(item)
+            seen.add(key)
+            
+    return unique_affected
+
+@app.route('/api/absences/<int:absence_id>/affected-classes', methods=['GET'])
+@login_required
+def get_absence_affected_classes(absence_id: int):
+    try:
+        with mysql_connection() as (mysql, cur):
+            cur.execute("""
+                SELECT ta.*, t.teacher_name 
+                FROM teacher_absences ta
+                JOIN teachers t ON ta.teacher_id = t.teacher_id
+                WHERE ta.absence_id = %s AND t.user_id = %s
+            """, (absence_id, session.get('user_id')))
+            absence = cur.fetchone()
+            if not absence:
+                return jsonify({'error': 'Absence not found'}), 404
+            
+            classes = get_affected_classes(
+                absence['teacher_name'], 
+                absence['start_date'], 
+                absence['end_date'], 
+                session.get('user_id')
+            )
+            return jsonify({
+                'teacher_name': absence['teacher_name'],
+                'affected_classes': classes
+            })
+    except Exception as e:
+        app.logger.error(f"Error fetching affected classes: {e}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/absences/<int:absence_id>/auto-suggest', methods=['GET'])
 @login_required
@@ -2272,6 +2575,208 @@ def update_profile_picture():
     #     session['theme'] = 'dark'
     # return redirect(request.referrer or url_for('home'))
 
+
+@app.route('/api/export/excel', methods=['GET'])
+@login_required
+def export_excel():
+    export_type = request.args.get('type')
+    user_id = session.get('user_id')
+    filter_value = request.args.get('filter_value')
+    
+    output = io.BytesIO()
+    filename = f"{export_type}_export.xlsx"
+    
+    try:
+        if export_type == 'teachers':
+            with mysql_connection() as (mysql, cur):
+                query = """
+                    SELECT t.teacher_name, t.email, t.phone, t.weekly_hours, d.name AS department
+                    FROM teachers t
+                    JOIN departments d ON t.department_id = d.department_id
+                    WHERE t.user_id = %s
+                """
+                params = [user_id]
+                if filter_value and filter_value != 'All Department':
+                    query += " AND d.name = %s"
+                    params.append(filter_value)
+                
+                cur.execute(query, tuple(params))
+                data = cur.fetchall()
+                df = pd.DataFrame(data)
+                if not df.empty:
+                    df.columns = ['Name', 'Email', 'Phone', 'Weekly Hours', 'Department']
+                
+        elif export_type == 'classes':
+            with mysql_connection() as (mysql, cur):
+                query = """
+                    SELECT c.name, g.name AS grade, c.students_count, cr.room_number
+                    FROM classes c
+                    LEFT JOIN grades g ON c.grade_id = g.grade_id
+                    LEFT JOIN classrooms cr ON c.classroom_id = cr.classroom_id
+                    WHERE c.user_id = %s
+                """
+                params = [user_id]
+                if filter_value and filter_value != 'All':
+                    query += " AND g.name = %s"
+                    params.append(filter_value)
+                
+                cur.execute(query, tuple(params))
+                data = cur.fetchall()
+                df = pd.DataFrame(data)
+                if not df.empty:
+                    df.columns = ['Class Name', 'Grade', 'Students Count', 'Classroom']
+
+        elif export_type == 'subjects':
+            with mysql_connection() as (mysql, cur):
+                query = """
+                    SELECT s.name, s.type, s.weekly_hours, d.name AS department
+                    FROM subjects s
+                    JOIN departments d ON s.department_id = d.department_id
+                    WHERE s.user_id = %s
+                """
+                params = [user_id]
+                if filter_value:
+                    query += " AND d.name = %s"
+                    params.append(filter_value)
+                
+                cur.execute(query, tuple(params))
+                data = cur.fetchall()
+                df = pd.DataFrame(data)
+                if not df.empty:
+                    df.columns = ['Subject Name', 'Type', 'Weekly Hours', 'Department']
+
+        elif export_type == 'timetable':
+            timetable_id = request.args.get('id')
+            category_type = request.args.get('category_type', 'class')
+            
+            mongo_db = get_mongodb_connection()
+            # If no ID, get the latest one
+            if not timetable_id or timetable_id == 'undefined':
+                timetable_doc = mongo_db["timetables"].find_one({"user_id": user_id}, sort=[("generated_at", -1)])
+            else:
+                timetable_doc = mongo_db["timetables"].find_one({"_id": ObjectId(timetable_id), "user_id": user_id})
+            
+            if not timetable_doc:
+                return jsonify({'error': 'Timetable not found'}), 404
+            
+            generated_timetable = timetable_doc['generated_timetable']
+            if isinstance(generated_timetable, str):
+                generated_timetable = json.loads(generated_timetable)
+            
+            lecture_duration = int(timetable_doc.get('parameters', {}).get('lecture_duration', 45))
+            
+            # Prepare Excel writer with multiple sheets if needed
+            sheet_added = False
+            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                if category_type == 'class':
+                    # Try to find the class even with slight naming differences
+                    if filter_value and filter_value.lower() != 'all':
+                        # Case-insensitive lookup
+                        target_class = next((k for k in generated_timetable.keys() if k.lower() == filter_value.lower()), None)
+                        classes = [target_class] if target_class else []
+                    else:
+                        classes = list(generated_timetable.keys())
+
+                    for class_name in classes:
+                        class_data = generated_timetable.get(class_name)
+                        if not class_data: continue
+                        
+                        df = format_timetable_df(class_data, lecture_duration)
+                        # Excel sheet name limit is 31 chars and no special chars
+                        safe_sheet_name = "".join(x for x in class_name if x.isalnum() or x in " -_")[:31]
+                        df.to_excel(writer, sheet_name=safe_sheet_name or "Timetable")
+                        sheet_added = True
+                
+                elif category_type == 'teacher':
+                    teacher_schedule = filter_timetable_by(generated_timetable, filter_value, 'teacher')
+                    if teacher_schedule:
+                        df = format_timetable_df(teacher_schedule, lecture_duration)
+                        df.to_excel(writer, sheet_name=filter_value[:31] if filter_value else "Teacher")
+                        sheet_added = True
+                
+                elif category_type == 'classroom':
+                    classroom_schedule = filter_timetable_by(generated_timetable, filter_value, 'classroom')
+                    if classroom_schedule:
+                        df = format_timetable_df(classroom_schedule, lecture_duration)
+                        df.to_excel(writer, sheet_name=filter_value[:31] if filter_value else "Classroom")
+                        sheet_added = True
+                
+                # Fallback if no data was found to prevent Excel crash
+                if not sheet_added:
+                    df_empty = pd.DataFrame([["No data available for the selected filter"]], columns=["Notice"])
+                    df_empty.to_excel(writer, sheet_name="No Data")
+            
+            output.seek(0)
+            return send_file(output, as_attachment=True, download_name=f"timetable_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx")
+
+        else:
+            return jsonify({'error': 'Invalid export type'}), 400
+
+        # For non-timetable exports
+        if df.empty:
+            df = pd.DataFrame(columns=['No data found'])
+            
+        df.to_excel(output, index=False, engine='openpyxl')
+        output.seek(0)
+        return send_file(output, as_attachment=True, download_name=filename)
+
+    except Exception as e:
+        app.logger.error(f"Export error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+def format_timetable_df(schedule_data, lecture_duration_mins):
+    """Formats raw timetable JSON into a Pandas DataFrame grid."""
+    days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
+    all_slots = set()
+    for day in days:
+        if day in schedule_data:
+            all_slots.update(schedule_data[day].keys())
+    
+    sorted_slots = sorted(list(all_slots), key=lambda x: parse_time_robustly(x.split(' to ')[0]))
+    
+    grid = []
+    total_lectures = 0
+    for slot in sorted_slots:
+        row = {'Time': slot}
+        for day in days:
+            cell = schedule_data.get(day, {}).get(slot, '-')
+            if isinstance(cell, dict):
+                total_lectures += 1
+                row[day] = f"{cell['subject']}\n({cell.get('classroom', cell.get('className', ''))})"
+            else:
+                row[day] = cell
+        grid.append(row)
+    
+    df = pd.DataFrame(grid)
+    df.set_index('Time', inplace=True)
+    
+    # Calculate weekly hours
+    total_hours = (total_lectures * lecture_duration_mins) / 60.0
+    
+    # Append total hours row
+    df.loc['Total Weekly Hours'] = ['' for _ in range(len(days))]
+    df.iloc[-1, 0] = f"{total_hours:.2f} hrs"
+    
+    return df
+
+def filter_timetable_by(generated_timetable, value, target_type):
+    """Filters a class-based timetable by teacher or classroom."""
+    filtered = {}
+    for class_name, days in generated_timetable.items():
+        for day, slots in days.items():
+            for slot, data in slots.items():
+                match = False
+                if target_type == 'teacher':
+                    if value == 'all' or value in data['subject']:
+                        match = True
+                elif target_type == 'classroom':
+                    if value == 'all' or value == data['classroom']:
+                        match = True
+                
+                if match:
+                    if day not in filtered: filtered[day] = {}
+                    filtered[day][slot] = {**data, 'className': class_name}
+    return filtered
 
 if __name__ == '__main__':
     app.run(debug=True)
