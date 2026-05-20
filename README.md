@@ -132,7 +132,7 @@ Timetable Genius solves the combinatorial scheduling problem that institutions f
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/Manavdarji2/Timetable-genius.git
+git clone https://github.com/manav-darji-aiml/Timetable-genius.git
 cd Timetable-genius
 ```
 
@@ -784,4 +784,4 @@ MIT License — see [`mit_license.md`](mit_license.md) for full text with AI usa
 
 ---
 
-**Built by [Manav Darji](https://github.com/Manavdarji2)**
+**Built by [Manav Darji](https://github.com/manav-darji-aiml)**
