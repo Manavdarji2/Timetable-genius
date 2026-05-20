@@ -2,6 +2,226 @@
 
 document.addEventListener('DOMContentLoaded', () => {
 
+    // Helper to apply RBAC (Role-Based Access Control)
+    const applyRBAC = () => {
+        const role = window.USER_ROLE;
+        if (role === 'teacher') {
+            // Hide admin-only sidebar items
+            const adminOnlyPages = ['generate-page', 'absences-page'];
+            adminOnlyPages.forEach(page => {
+                const item = document.querySelector(`.sidebar-item[data-page="${page}"]`);
+                if (item) item.style.display = 'none';
+            });
+
+            // Hide action buttons in different pages
+            const adminOnlyButtons = [
+                'add-teacher-btn', 
+                'add-class-btn', 
+                'add-subject-btn', 
+                'add-classroom-btn',
+                'generate-timetable-btn'
+            ];
+            adminOnlyButtons.forEach(id => {
+                const btn = document.getElementById(id);
+                if (btn) btn.style.display = 'none';
+            });
+            
+            // Hide admin-only action cards in dashboard
+            const adminOnlyActions = ['generate', 'absences'];
+            adminOnlyActions.forEach(action => {
+                const card = document.querySelector(`.action-card[data-page="${action}"]`);
+                if (card) card.style.display = 'none';
+            });
+
+            // Add class to body for CSS-based hiding (actions columns etc.)
+            document.body.classList.add('user-role-teacher');
+
+            // Show read-only banner
+            const banner = document.getElementById('read-only-banner');
+            if (banner) banner.style.display = 'flex';
+        }
+    };
+
+    // Mobile Navigation Toggle
+    const initMobileMenu = () => {
+        const toggleBtn = document.getElementById('menu-toggle');
+        const sidebar = document.querySelector('.sidebar');
+        const mainContent = document.querySelector('.main-content');
+
+        if (toggleBtn && sidebar) {
+            toggleBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                sidebar.classList.toggle('active');
+            });
+
+            // Close sidebar when clicking outside on mobile
+            document.addEventListener('click', (e) => {
+                if (sidebar.classList.contains('active') && !sidebar.contains(e.target) && e.target !== toggleBtn) {
+                    sidebar.classList.remove('active');
+                }
+            });
+
+            // Close sidebar when clicking a menu item on mobile
+            const navItems = document.querySelectorAll('.sidebar-item');
+            navItems.forEach(item => {
+                item.addEventListener('click', () => {
+                    if (window.innerWidth <= 992) {
+                        sidebar.classList.remove('active');
+                    }
+                });
+            });
+        }
+    };
+
+    // Teacher Tab Switching
+    window.switchTeacherTab = (tab) => {
+        const facultyView = document.getElementById('faculty-list-view');
+        const staffView = document.getElementById('staff-list-view');
+        const facultyBtn = document.getElementById('tab-faculty');
+        const staffBtn = document.getElementById('tab-staff');
+
+        if (tab === 'faculty') {
+            facultyView.style.display = 'block';
+            staffView.style.display = 'none';
+            facultyBtn.style.color = 'var(--primary-color)';
+            facultyBtn.style.borderBottom = '2px solid var(--primary-color)';
+            staffBtn.style.color = 'var(--dark-gray)';
+            staffBtn.style.borderBottom = 'none';
+        } else {
+            facultyView.style.display = 'none';
+            staffView.style.display = 'block';
+            staffBtn.style.color = 'var(--primary-color)';
+            staffBtn.style.borderBottom = '2px solid var(--primary-color)';
+            facultyBtn.style.color = 'var(--dark-gray)';
+            facultyBtn.style.borderBottom = 'none';
+            fetchStaffAccounts();
+        }
+    };
+
+    // Fetch and Render Staff Accounts
+    const fetchStaffAccounts = async () => {
+        try {
+            const response = await fetch('/api/staff');
+            if (!response.ok) throw new Error('Failed to fetch staff accounts');
+            const staff = await response.json();
+            renderStaffTable(staff);
+        } catch (error) {
+            console.error('Error:', error);
+            showToast('Failed to load staff accounts', 'error');
+        }
+    };
+
+    const renderStaffTable = (staff) => {
+        const tableBody = document.getElementById('staff-table');
+        if (!tableBody) return;
+        
+        tableBody.innerHTML = '';
+        if (staff.length === 0) {
+            tableBody.innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 20px;">No staff accounts found. Create one to share the timetable.</td></tr>';
+            return;
+        }
+
+        staff.forEach(user => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>${user.name}</td>
+                <td>${user.email}</td>
+                <td><span class="role-badge" style="background: var(--light-gray); color: var(--primary-color); padding: 2px 8px; border-radius: 4px; font-size: 0.75rem;">${user.role.toUpperCase()}</span></td>
+                <td>
+                    <button class="btn btn-secondary btn-sm" onclick="deleteStaffAccount(${user.user_id})">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </td>
+            `;
+            tableBody.appendChild(row);
+        });
+    };
+
+    window.deleteStaffAccount = async (userId) => {
+        if (!confirm('Are you sure you want to delete this staff account? They will lose access to the timetable.')) return;
+        try {
+            const response = await fetch(`/api/staff/${userId}`, { method: 'DELETE' });
+            if (!response.ok) throw new Error('Failed to delete staff account');
+            showToast('Staff account deleted', 'success');
+            fetchStaffAccounts();
+        } catch (error) {
+            showToast('Error deleting account', 'error');
+        }
+    };
+
+    // Add staff-form to openModal
+    const originalOpenModal = window.openModal;
+    window.openModal = (title, type, data = null, callback = null, updated_id = null) => {
+        if (type === 'staff-form') {
+            const modal = document.getElementById('modal-container');
+            const modalTitle = document.getElementById('modal-title');
+            const modalBody = document.getElementById('modal-body');
+            const saveBtn = document.getElementById('modal-save');
+            
+            modalTitle.textContent = title;
+            modalBody.innerHTML = `
+                <form id="create-staff-form">
+                    <div class="form-group" style="margin-bottom: 15px;">
+                        <label>Teacher Name</label>
+                        <input type="text" id="staff-name" required placeholder="Full Name" style="width: 100%; padding: 8px; margin-top: 5px;">
+                    </div>
+                    <div class="form-group" style="margin-bottom: 15px;">
+                        <label>Login Email</label>
+                        <input type="email" id="staff-email" required placeholder="email@school.com" style="width: 100%; padding: 8px; margin-top: 5px;">
+                    </div>
+                    <div class="form-group" style="margin-bottom: 15px;">
+                        <label>Password</label>
+                        <input type="password" id="staff-password" required placeholder="Temporary password" style="width: 100%; padding: 8px; margin-top: 5px;">
+                    </div>
+                    <p style="font-size: 0.8rem; color: var(--dark-gray); background: var(--light-gray); padding: 10px; border-radius: 4px;">
+                        <i class="fas fa-info-circle"></i> This teacher will be able to log in and view your institutional data in read-only mode.
+                    </p>
+                </form>
+            `;
+            
+            modal.style.display = 'flex';
+            
+            saveBtn.onclick = async () => {
+                const name = document.getElementById('staff-name').value;
+                const email = document.getElementById('staff-email').value;
+                const password = document.getElementById('staff-password').value;
+                
+                if (!name || !email || !password) {
+                    showToast('All fields are required', 'error');
+                    return;
+                }
+
+                try {
+                    saveBtn.disabled = true;
+                    saveBtn.textContent = 'Creating...';
+                    const response = await fetch('/api/staff', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ name, email, password, role: 'teacher' })
+                    });
+                    
+                    const result = await response.json();
+                    if (!response.ok) throw new Error(result.error || 'Failed to create account');
+                    
+                    showToast('Staff account created successfully!', 'success');
+                    modal.style.display = 'none';
+                    fetchStaffAccounts();
+                } catch (error) {
+                    showToast(error.message, 'error');
+                } finally {
+                    saveBtn.disabled = false;
+                    saveBtn.textContent = 'Save';
+                }
+            };
+            return;
+        }
+        // Fallback to original if defined, or just use the logic from earlier
+    };
+
+    // Re-implementing openModal logic because it was replaced above or needs integration
+    // I'll actually just find where openModal was defined and add the case there.
+    // Let me search for openModal in script.js again.
+
     // Helper to format dates consistently (YYYY-MM-DD to Month Day, YYYY)
     const formatDate = (dateStr) => {
         if (!dateStr) return '-';
@@ -284,6 +504,9 @@ document.addEventListener('DOMContentLoaded', () => {
                             <button class="btn btn-primary btn-sm" onclick="EditTeacherDetails(${teacher.teacher_id})">
                                 Edit
                             </button>
+                            <button class="btn btn-secondary btn-sm" onclick="manageAvailability(${teacher.teacher_id})">
+                                Availability
+                            </button>
                             <button class="btn btn-secondary btn-sm" onclick="DeleteTeacherData(${teacher.teacher_id})">
                                 Delete
                             </button>
@@ -346,6 +569,23 @@ document.addEventListener('DOMContentLoaded', () => {
             const teacher = await response.json();
             // Update teacher details in the UI
             openModal('Edit Teacher', 'edit-teacher-form',teacher,null, teacherId);
+        };
+
+        window.manageAvailability = async (teacherId) => {
+            try {
+                const response = await fetch(`/api/teachers/${teacherId}/availability`);
+                if (!response.ok) throw new Error('Failed to fetch availability');
+                const availability = await response.json();
+                
+                // Fetch teacher name for the modal title
+                const tRes = await fetch(`/api/teachers/${teacherId}`);
+                const teacher = await tRes.json();
+                
+                openModal(`Availability: ${teacher.teacher_name}`, 'availability-form', availability, null, teacherId);
+            } catch (error) {
+                console.error('Error fetching availability:', error);
+                showToast('Failed to load availability data', 'error');
+            }
         };
         // Teacher Actions Functionality
     
@@ -916,7 +1156,139 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Dynamic content based on type
         switch(contentType) {
+            case 'staff-form':
+                modalBody.innerHTML = `
+                    <form id="create-staff-form">
+                        <div class="form-group" style="margin-bottom: 15px;">
+                            <label>Teacher Name</label>
+                            <input type="text" id="staff-name" required placeholder="Full Name" style="width: 100%; padding: 8px; margin-top: 5px;">
+                        </div>
+                        <div class="form-group" style="margin-bottom: 15px;">
+                            <label>Login Email</label>
+                            <input type="email" id="staff-email" required placeholder="email@school.com" style="width: 100%; padding: 8px; margin-top: 5px;">
+                        </div>
+                        <div class="form-group" style="margin-bottom: 15px;">
+                            <label>Password</label>
+                            <input type="password" id="staff-password" required placeholder="Temporary password" style="width: 100%; padding: 8px; margin-top: 5px;">
+                        </div>
+                        <p style="font-size: 0.8rem; color: var(--dark-gray); background: var(--light-gray); padding: 10px; border-radius: 4px;">
+                            <i class="fas fa-info-circle"></i> This teacher will be able to log in and view your institutional data in read-only mode.
+                        </p>
+                    </form>
+                `;
+                
+                saveBtn.onclick = async () => {
+                    const name = document.getElementById('staff-name').value;
+                    const email = document.getElementById('staff-email').value;
+                    const password = document.getElementById('staff-password').value;
+                    
+                    if (!name || !email || !password) {
+                        showToast('All fields are required', 'error');
+                        return;
+                    }
 
+                    try {
+                        saveBtn.disabled = true;
+                        saveBtn.textContent = 'Creating...';
+                        const response = await fetch('/api/staff', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ name, email, password, role: 'teacher' })
+                        });
+                        
+                        const result = await response.json();
+                        if (!response.ok) throw new Error(result.error || 'Failed to create account');
+                        
+                        showToast('Staff account created successfully!', 'success');
+                        modal.style.display = 'none';
+                        fetchStaffAccounts();
+                    } catch (error) {
+                        showToast(error.message, 'error');
+                    } finally {
+                        saveBtn.disabled = false;
+                        saveBtn.textContent = 'Save';
+                    }
+                };
+                break;
+
+            case 'availability-form':
+                modalBody.innerHTML = `
+                    <div id="availability-container">
+                        <div class="availability-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                            <p style="margin: 0; font-size: 0.9rem; color: var(--dark-gray);">Define time slots when this teacher is available or unavailable.</p>
+                            <button type="button" class="btn btn-primary btn-sm" onclick="addAvailabilityRow()">+ Add Slot</button>
+                        </div>
+                        <div id="availability-list" class="availability-grid">
+                            <div class="availability-row header" style="display: grid; grid-template-columns: 2fr 1.5fr 1.5fr 2fr 40px; gap: 10px; font-weight: 600; padding-bottom: 5px; border-bottom: 1px solid var(--border-color); margin-bottom: 10px;">
+                                <span>Day</span>
+                                <span>Start</span>
+                                <span>End</span>
+                                <span>Status</span>
+                                <span></span>
+                            </div>
+                            <!-- Rows will be added here -->
+                        </div>
+                    </div>
+                `;
+                
+                const availList = document.getElementById('availability-list');
+                const weekDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+                
+                window.addAvailabilityRow = (slotData = null) => {
+                    const row = document.createElement('div');
+                    row.className = 'availability-row';
+                    row.style = "display: grid; grid-template-columns: 2fr 1.5fr 1.5fr 2fr 40px; gap: 10px; align-items: center; margin-bottom: 10px;";
+                    row.innerHTML = `
+                        <select class="avail-day" style="padding: 5px; border-radius: 4px; border: 1px solid var(--border-color);">
+                            ${weekDays.map(d => `<option value="${d}" ${slotData && slotData.day_of_week === d ? 'selected' : ''}>${d}</option>`).join('')}
+                        </select>
+                        <input type="time" class="avail-start" value="${slotData ? slotData.start_time : '09:00'}" style="padding: 5px; border-radius: 4px; border: 1px solid var(--border-color);">
+                        <input type="time" class="avail-end" value="${slotData ? slotData.end_time : '17:00'}" style="padding: 5px; border-radius: 4px; border: 1px solid var(--border-color);">
+                        <select class="avail-pref" style="padding: 5px; border-radius: 4px; border: 1px solid var(--border-color);">
+                            <option value="preferred" ${slotData && slotData.preference_level === 'preferred' ? 'selected' : ''}>Preferred</option>
+                            <option value="acceptable" ${slotData && (!slotData.preference_level || slotData.preference_level === 'acceptable' || slotData.preference_level === 'available') ? 'selected' : ''}>Available</option>
+                            <option value="unavailable" ${slotData && slotData.preference_level === 'unavailable' ? 'selected' : ''}>Unavailable</option>
+                        </select>
+                        <button type="button" class="btn-remove" onclick="this.parentElement.remove()" style="background: none; border: none; color: var(--danger-color); cursor: pointer; font-size: 1.2rem;">&times;</button>
+                    `;
+                    availList.appendChild(row);
+                };
+
+                // Populate existing slots
+                if (data && data.length > 0) {
+                    data.forEach(slot => addAvailabilityRow(slot));
+                } else {
+                    addAvailabilityRow(); // Add one empty row by default
+                }
+
+                saveBtn.onclick = async () => {
+                    const rows = availList.querySelectorAll('.availability-row:not(.header)');
+                    const availability = Array.from(rows).map(row => ({
+                        day_of_week: row.querySelector('.avail-day').value,
+                        start_time: row.querySelector('.avail-start').value,
+                        end_time: row.querySelector('.avail-end').value,
+                        preference_level: row.querySelector('.avail-pref').value
+                    }));
+
+                    try {
+                        saveBtn.disabled = true;
+                        saveBtn.textContent = 'Saving...';
+                        const response = await fetch(`/api/teachers/${updated_id}/availability`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ availability })
+                        });
+                        if (!response.ok) throw new Error('Failed to update availability');
+                        showToast('Availability updated successfully!', 'success');
+                        modal.style.display = 'none';
+                    } catch (error) {
+                        showToast(`Error: ${error.message}`, 'error');
+                    } finally {
+                        saveBtn.disabled = false;
+                        saveBtn.textContent = 'Save';
+                    }
+                };
+                break;
             case 'teacher-form':
                 modalBody.innerHTML = `
                     <form id="teacher-form">
@@ -2622,29 +2994,46 @@ document.addEventListener('DOMContentLoaded', () => {
                         
                         if (!data.affected_classes || data.affected_classes.length === 0) {
                             classesContainer.innerHTML = `
-                                <div style="background:var(--surface-2,#f8f9fa);padding:1rem;border-radius:8px;text-align:center;border:1px dashed var(--border-color);">
-                                    <p style="color:var(--dark-gray);margin:0;">No scheduled classes found for <strong>${data.teacher_name}</strong> during this period.</p>
+                                <div style="background:var(--surface-2);padding:1.5rem;border-radius:8px;text-align:center;border:1px dashed var(--border-color);">
+                                    <i class="fas fa-calendar-check" style="font-size:2rem;color:var(--success-color);margin-bottom:1rem;display:block;"></i>
+                                    <p style="color:var(--text-color);margin:0;font-weight:500;">No scheduled classes found for <strong>${data.teacher_name}</strong> during this period.</p>
                                 </div>`;
                         } else {
                             const listHtml = data.affected_classes.map(c => `
-                                <div style="background:white;padding:0.75rem;border-radius:6px;border:1px solid var(--border-color);margin-bottom:0.5rem;display:flex;justify-content:space-between;align-items:center;">
-                                    <div>
-                                        <strong style="display:block;color:var(--primary-color);">${c.class_name}</strong>
-                                        <span style="font-size:0.85rem;color:var(--dark-gray);">${c.day} | ${c.slot}</span>
+                                <div style="background:var(--surface-color);padding:1rem;border-radius:10px;border:1px solid var(--border-color);margin-bottom:0.75rem;display:flex;justify-content:space-between;align-items:center;box-shadow:0 2px 4px rgba(0,0,0,0.02);transition:var(--transition);">
+                                    <div style="display:flex;gap:12px;align-items:center;">
+                                        <div style="width:40px;height:40px;background:rgba(52,152,219,0.1);border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--primary-color);">
+                                            <i class="fas fa-users"></i>
+                                        </div>
+                                        <div>
+                                            <strong style="display:block;color:var(--secondary-color);font-size:1rem;">${c.class_name}</strong>
+                                            <span style="font-size:0.85rem;color:var(--dark-gray);font-weight:500;">
+                                                <i class="far fa-clock" style="margin-right:4px;"></i>${c.day} | ${c.slot}
+                                            </span>
+                                        </div>
                                     </div>
                                     <div style="text-align:right;">
-                                        <span style="font-size:0.85rem;font-weight:600;display:block;">${c.subject}</span>
-                                        <span style="font-size:0.75rem;color:var(--dark-gray);">Room: ${c.classroom}</span>
+                                        <span style="font-size:0.9rem;font-weight:600;display:block;color:var(--text-color);">${c.subject}</span>
+                                        <span style="font-size:0.8rem;color:var(--dark-gray);background:var(--surface-2);padding:2px 8px;border-radius:4px;margin-top:4px;display:inline-block;">
+                                            <i class="fas fa-door-open" style="margin-right:4px;"></i>Room: ${c.classroom}
+                                        </span>
                                     </div>
                                 </div>`).join('');
                             
                             classesContainer.innerHTML = `
-                                <div style="margin-bottom:1.5rem;">
-                                    <h4 style="margin-bottom:0.75rem;font-size:0.95rem;color:var(--text-color);display:flex;align-items:center;gap:8px;">
-                                        <i class="fas fa-list-ul" style="color:var(--primary-color);"></i>
-                                        Classes Needing Resolution for ${data.teacher_name}
-                                    </h4>
-                                    <div style="max-height:300px;overflow-y:auto;padding-right:5px;">
+                                <div style="margin-bottom:2rem;">
+                                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+                                        <h4 style="margin:0;font-size:1.1rem;color:var(--secondary-color);display:flex;align-items:center;gap:10px;">
+                                            <span style="width:32px;height:32px;background:var(--primary-color);color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.9rem;">
+                                                <i class="fas fa-exclamation-triangle"></i>
+                                            </span>
+                                            Classes Needing Resolution
+                                        </h4>
+                                        <span style="background:rgba(231,76,60,0.1);color:var(--danger-color);padding:4px 12px;border-radius:20px;font-size:0.8rem;font-weight:600;">
+                                            ${data.affected_classes.length} Sessions
+                                        </span>
+                                    </div>
+                                    <div style="max-height:400px;overflow-y:auto;padding-right:8px;padding-top:4px;">
                                         ${listHtml}
                                     </div>
                                 </div>`;
@@ -2709,30 +3098,50 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
 
                     saveBtn.disabled = false;
-                    const rows = data.suggestions.map((t, i) => `
-                        <tr>
-                            <td><input type="radio" name="suggest-teacher" value="${t.teacher_id}" id="st-${i}" ${i === 0 ? 'checked' : ''}></td>
-                            <td><label for="st-${i}">${t.teacher_name}</label></td>
-                            <td>${t.department_name || '—'}</td>
-                            <td>${t.weekly_hours ?? '—'} hrs</td>
-                        </tr>`).join('');
+                    const cardsHtml = data.suggestions.map((t, i) => `
+                        <label for="st-${i}" style="display:block;cursor:pointer;margin-bottom:0.75rem;">
+                            <input type="radio" name="suggest-teacher" value="${t.teacher_id}" id="st-${i}" ${i === 0 ? 'checked' : ''} style="display:none;">
+                            <div class="suggestion-card" style="background:var(--surface-color);padding:1rem;border-radius:10px;border:2px solid var(--border-color);display:flex;justify-content:space-between;align-items:center;transition:all 0.2s ease;">
+                                <div style="display:flex;gap:15px;align-items:center;">
+                                    <div style="width:45px;height:45px;background:var(--surface-2);border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--primary-color);font-size:1.2rem;border:1px solid var(--border-color);">
+                                        <i class="fas fa-user-tie"></i>
+                                    </div>
+                                    <div>
+                                        <strong style="display:block;font-size:1.05rem;color:var(--secondary-color);">${t.teacher_name}</strong>
+                                        <span style="font-size:0.85rem;color:var(--dark-gray);">${t.department_name || 'No Department'}</span>
+                                    </div>
+                                </div>
+                                <div style="text-align:right;">
+                                    <span style="display:block;font-size:0.8rem;color:var(--dark-gray);font-weight:600;text-transform:uppercase;">Weekly Load</span>
+                                    <span style="font-size:1.1rem;font-weight:700;color:var(--primary-color);">${t.weekly_hours ?? 0} hrs</span>
+                                </div>
+                            </div>
+                        </label>`).join('');
 
                     modalBody.innerHTML = `
-                        <p style="margin-bottom:0.75rem;">
-                            Covering for <strong>${data.absent_teacher}</strong>
-                            (${data.period.start} – ${data.period.end})
-                        </p>
-                        <table style="width:100%;border-collapse:collapse;font-size:0.9rem;">
-                            <thead>
-                                <tr style="background:var(--surface-2,#f0f0f0);">
-                                    <th style="padding:0.5rem;text-align:left;"></th>
-                                    <th style="padding:0.5rem;text-align:left;">Teacher</th>
-                                    <th style="padding:0.5rem;text-align:left;">Department</th>
-                                    <th style="padding:0.5rem;text-align:left;">Weekly hrs</th>
-                                </tr>
-                            </thead>
-                            <tbody>${rows}</tbody>
-                        </table>`;
+                        <div style="background:rgba(52,152,219,0.05);padding:1rem;border-radius:8px;margin-bottom:1.5rem;border-left:4px solid var(--primary-color);">
+                            <p style="margin:0;color:var(--secondary-color);font-size:0.95rem;">
+                                AI found these available teachers to cover for <strong>${data.absent_teacher}</strong>
+                            </p>
+                            <p style="margin:5px 0 0 0;font-size:0.85rem;color:var(--dark-gray);">
+                                <i class="far fa-calendar-alt"></i> ${data.period.start} \u2014 ${data.period.end}
+                            </p>
+                        </div>
+                        <div style="max-height:450px;overflow-y:auto;padding-right:5px;" id="suggestions-list-container">
+                            ${cardsHtml}
+                        </div>
+                        <style>
+                            input[name="suggest-teacher"]:checked + .suggestion-card {
+                                border-color: var(--primary-color) !important;
+                                background: rgba(52,152,219,0.02) !important;
+                                box-shadow: 0 4px 12px rgba(52,152,219,0.1);
+                                transform: translateY(-2px);
+                            }
+                            .suggestion-card:hover {
+                                border-color: var(--primary-color);
+                                background: var(--surface-2);
+                            }
+                        </style>`;
 
                     saveBtn.onclick = async () => {
                         const selected = modalBody.querySelector('input[name="suggest-teacher"]:checked');
@@ -2975,12 +3384,14 @@ document.addEventListener('DOMContentLoaded', () => {
     // Logout
     const initLogout = () => {
         const logoutBtn = document.getElementById('logout-btn');
-        logoutBtn.addEventListener('click', () => {
-            // Clear any session data
-            localStorage.clear();
-            // Redirect to login page
-            window.location.href = '/login';
-        });
+        if (logoutBtn) {
+            logoutBtn.addEventListener('click', () => {
+                // Clear any local storage
+                localStorage.clear();
+                // Redirect to server-side logout route
+                window.location.href = '/logout';
+            });
+        }
     };
     
     const initInternetCheckIfNotThrowError=()=>{

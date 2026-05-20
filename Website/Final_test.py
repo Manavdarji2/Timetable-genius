@@ -240,7 +240,15 @@ Output:-
             }
         }
 
-Understand that what you have to make after that i will give next input understand this"""),
+Understand that what you have to make after that i will give next input understand this.
+
+CRITICAL CONSTRAINTS:
+1. Teacher Availability: You will receive a `teacher_availability` dictionary. 
+   - 'unavailable': DO NOT assign the teacher any lectures during these slots.
+   - 'preferred': Prioritize assigning the teacher's lectures during these slots.
+   - 'available': Normal availability.
+2. Conflicts: A teacher CANNOT be in two places at once. A classroom CANNOT host two classes at once.
+3. Weekly Hours: Ensure every subject meets its 'weekly_hours' requirement (Theory and Practical)."""),
         ],
     )
     output=""

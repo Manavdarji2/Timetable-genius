@@ -10,12 +10,16 @@ CREATE TABLE users (
     email VARCHAR(100) NOT NULL UNIQUE,
     password_hash VARCHAR(255) NOT NULL,
     role ENUM('admin', 'teacher') NOT NULL,
+    parent_admin_id INT DEFAULT NULL,
     phone VARCHAR(20),
     date_of_birth DATE,
     employee_id VARCHAR(50),
     profile_picture BLOB,
+    reset_token VARCHAR(255),
+    token_expiry DATETIME,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (parent_admin_id) REFERENCES users(user_id) ON DELETE SET NULL
 );
 
 -- Departments table

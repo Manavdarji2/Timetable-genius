@@ -16,6 +16,7 @@ from datetime import datetime, timedelta
 import secrets
 from PIL import Image
 import pandas as pd
+from openpyxl.styles import PatternFill, Alignment, Border, Side
 from Final_test import Generate_test_timetable
 from dotenv import load_dotenv
 load_dotenv()
@@ -95,6 +96,23 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
+# Roles Required Decorator
+def roles_required(*roles):
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            if 'user_id' not in session:
+                return redirect(url_for('login'))
+            if session.get('user_role') not in roles:
+                return jsonify({'error': 'Unauthorized. Admin role required.'}), 403
+            return f(*args, **kwargs)
+        return decorated_function
+    return decorator
+
+def get_effective_user_id():
+    """Returns the admin user_id if the current user is a staff/teacher, otherwise returns current user_id."""
+    return session.get('parent_admin_id') or session.get('user_id')
+
 def parse_time_robustly(time_str):
     """Parses time strings like '8am', '8:00am', '08:00am' robustly."""
     time_str = time_str.lower().strip()
@@ -147,7 +165,7 @@ class TimetablePDF(FPDF):
 @app.route('/api/export/pdf', methods=['GET'])
 @login_required
 def export_pdf():
-    user_id = session.get('user_id')
+    eff_user_id = get_effective_user_id()
     timetable_id = request.args.get('id')
     category_type = request.args.get('category_type', 'class')
     filter_value = request.args.get('filter_value')
@@ -226,14 +244,16 @@ def export_pdf():
             for slot in sorted_slots:
                 # Calculate required height for this row
                 max_lines = 1
-                row_contents = []
+                row_data = []
                 for day in days:
                     cell = schedule_data.get(day, {}).get(slot, '-')
                     if isinstance(cell, dict):
-                        content = f"{cell['subject']}\n({cell.get('classroom', cell.get('className', ''))})"
+                        s_type = cell.get('type', 'Theory')
+                        content = f"{cell['subject']}\n({cell.get('classroom', cell.get('className', ''))})\n[{s_type}]"
+                        row_data.append({'content': content, 'type': s_type})
                     else:
                         content = str(cell)
-                    row_contents.append(content)
+                        row_data.append({'content': content, 'type': None})
                     max_lines = max(max_lines, content.count('\n') + 1)
                 
                 row_height = max_lines * 5
@@ -255,9 +275,19 @@ def export_pdf():
                 pdf.multi_cell(col_width, 5, slot, border=1, align='C')
                 pdf.set_xy(x_start + col_width, y_start)
                 
-                for content in row_contents:
+                for item in row_data:
                     curr_x = pdf.get_x()
-                    pdf.multi_cell(col_width, 5, content, border=1, align='C')
+                    
+                    # Design based on type
+                    if item['type'] == 'Theory':
+                        pdf.set_fill_color(230, 240, 255) # Light Blue
+                        pdf.multi_cell(col_width, 5, item['content'], border=1, align='C', fill=True)
+                    elif item['type'] == 'Practical':
+                        pdf.set_fill_color(230, 255, 230) # Light Green
+                        pdf.multi_cell(col_width, 5, item['content'], border=1, align='C', fill=True)
+                    else:
+                        pdf.multi_cell(col_width, 5, item['content'], border=1, align='C', fill=False)
+                        
                     pdf.set_xy(curr_x + col_width, y_start)
                 pdf.ln(row_height)
 
@@ -297,11 +327,10 @@ def login():
         email = data.get('email')
         password = data.get('password')
         
-        
         try:
             with mysql_connection() as (mysql, cursor):
                 cursor.execute("""
-                    SELECT user_id, name, email, password_hash, role 
+                    SELECT user_id, name, email, password_hash, role, parent_admin_id
                     FROM users 
                     WHERE email = %s
                 """, (email,))
@@ -312,6 +341,7 @@ def login():
                     session['user_id'] = user['user_id']
                     session['user_name'] = user['name']
                     session['user_role'] = user['role']
+                    session['parent_admin_id'] = user['parent_admin_id']
                     return jsonify({'redirect': '/dashboard'})
                 else:
                     return jsonify({'error': 'Invalid credentials'}), 401
@@ -329,13 +359,13 @@ def signup():
         email = data.get('email')
         password = data.get('password')
         role = data.get('role')
+        parent_admin_id = data.get('parent_admin_id') # For staff creation
         
         if not all([name, email, password, role]):
             return jsonify({'error': 'All fields are required'}), 400
         
         # Hash the password
         hashed_password = generate_password_hash(password)
-        
         
         try:
             with mysql_connection() as (mysql, cur):
@@ -348,9 +378,9 @@ def signup():
             
                 # Insert new user
                 cur.execute("""
-                    INSERT INTO users (name, email, password_hash, role, created_at) 
-                    VALUES (%s, %s, %s, %s, %s)
-                """, (name, email, hashed_password, role, datetime.now()))
+                    INSERT INTO users (name, email, password_hash, role, parent_admin_id, created_at) 
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                """, (name, email, hashed_password, role, parent_admin_id, datetime.now()))
             
                 mysql.commit()
                 return jsonify({'message': 'Registration successful'}), 201
@@ -457,6 +487,7 @@ def reset_password(token):
 def dashboard():
     
     try:
+        eff_user_id = get_effective_user_id()
         with mysql_connection() as (mysql, cur):
             # Get user details first
             cur.execute(
@@ -469,16 +500,16 @@ def dashboard():
                 return redirect(url_for('login'))
 
             # Get counts for dashboard
-            cur.execute("SELECT COUNT(*) as count FROM teachers WHERE user_id = %s", (session.get('user_id'),))
+            cur.execute("SELECT COUNT(*) as count FROM teachers WHERE user_id = %s", (eff_user_id,))
             teacher_count = cur.fetchone()['count']
         
-            cur.execute("SELECT COUNT(*) as count FROM classes WHERE user_id = %s", (session.get('user_id'),))
+            cur.execute("SELECT COUNT(*) as count FROM classes WHERE user_id = %s", (eff_user_id,))
             class_count = cur.fetchone()['count']
         
-            cur.execute("SELECT COUNT(*) as count FROM classrooms WHERE user_id = %s", (session.get('user_id'),))
+            cur.execute("SELECT COUNT(*) as count FROM classrooms WHERE user_id = %s", (eff_user_id,))
             classroom_count = cur.fetchone()['count']
         
-            cur.execute("SELECT COUNT(*) as count FROM subjects WHERE user_id = %s", (session.get('user_id'),))
+            cur.execute("SELECT COUNT(*) as count FROM subjects WHERE user_id = %s", (eff_user_id,))
             subject_count = cur.fetchone()['count']
         
             cur.execute("""
@@ -488,7 +519,7 @@ def dashboard():
                 WHERE a.user_id = %s
                 ORDER BY a.timestamp DESC 
                 LIMIT 5
-            """, (session.get('user_id'),))
+            """, (eff_user_id,))
             activities = cur.fetchall()
 
             # Return JSON if requested
@@ -523,6 +554,7 @@ def dashboard():
 @login_required
 def get_teachers():
     try:
+        eff_user_id = get_effective_user_id()
         with mysql_connection() as (mysql, cur):
             # Fixed SQL query syntax (removed extra comma, added missing column
             cur.execute("""
@@ -546,7 +578,7 @@ def get_teachers():
                         t.user_id = %s
                     GROUP BY 
                         t.teacher_id, t.teacher_name, t.email, t.phone, t.weekly_hours, d.name;
-                        """, (session.get("user_id"),))
+                        """, (eff_user_id,))
             teachers = cur.fetchall()
             return jsonify(teachers)
     except Exception as e:
@@ -554,6 +586,7 @@ def get_teachers():
         return jsonify({'error': str(e)}), 500
 @app.route('/api/teachers', methods=['POST'])
 @login_required
+@roles_required('admin')
 def add_teacher():
     teacher = request.json
     
@@ -637,6 +670,7 @@ def get_teacher(teacher_id):
 
 @app.route('/api/teachers/<int:teacher_id>', methods=['PUT'])
 @login_required
+@roles_required('admin')
 def update_teacher(teacher_id):
     teacher = request.json
     
@@ -695,25 +729,24 @@ def update_teacher(teacher_id):
         return jsonify({'error': 'Failed to update teacher: ' + str(e)}), 500
 @app.route('/api/teachers/<int:teacher_id>', methods=['DELETE'])
 @login_required
+@roles_required('admin')
 def delete_teacher(teacher_id):
     try:
-        # Get teacher
-        mysql = get_mysql_connection()
-        cur = mysql.cursor(dictionary=True)
-        cur.execute("""
-            SELECT * FROM teachers 
-            WHERE teacher_id = %s AND user_id = %s
-        """, (teacher_id, session.get('user_id')))
-        teacher = cur.fetchone()
-        if teacher is None:
-            return jsonify({'error': 'Teacher not found or not authorized'}), 404
+        with mysql_connection() as (mysql, cur):
+            cur.execute("""
+                SELECT * FROM teachers 
+                WHERE teacher_id = %s AND user_id = %s
+            """, (teacher_id, session.get('user_id')))
+            teacher = cur.fetchone()
+            if teacher is None:
+                return jsonify({'error': 'Teacher not found or not authorized'}), 404
 
-        teacher_name = teacher['teacher_name']
-        if teacher:
+            teacher_name = teacher['teacher_name']
+            
             # Delete teacher
             cur.execute("""
-                        DELETE FROM teachers WHERE teacher_id = %s AND user_id = %s
-                        """, (teacher_id, session.get('user_id')))
+                DELETE FROM teachers WHERE teacher_id = %s AND user_id = %s
+            """, (teacher_id, session.get('user_id')))
             mysql.commit()
             
             # Log activity
@@ -728,19 +761,74 @@ def delete_teacher(teacher_id):
                 teacher_id
             ))
             mysql.commit()
-        return jsonify({'message': 'Teacher deleted successfully'}), 200
+            return jsonify({'message': 'Teacher deleted successfully'}), 200
     except Exception as e:
-        mysql.rollback()
-        print(f"Error deleting teacher: {e}")
+        app.logger.error(f"Error deleting teacher: {e}")
         return jsonify({'error': 'Failed to delete teacher: ' + str(e)}), 500
-    finally:
-        cur.close()
-        mysql.close()
+
+@app.route('/api/teachers/<int:teacher_id>/availability', methods=['GET'])
+@login_required
+def get_teacher_availability(teacher_id):
+    try:
+        with mysql_connection() as (mysql, cur):
+            # Verify teacher belongs to user
+            cur.execute("SELECT teacher_id FROM teachers WHERE teacher_id = %s AND user_id = %s", (teacher_id, session.get('user_id')))
+            if not cur.fetchone():
+                return jsonify({'error': 'Unauthorized'}), 403
+            
+            cur.execute("""
+                SELECT availability_id, day_of_week, 
+                       TIME_FORMAT(start_time, '%%H:%%i') as start_time, 
+                       TIME_FORMAT(end_time, '%%H:%%i') as end_time, 
+                       preference_level
+                FROM teacher_availability 
+                WHERE teacher_id = %s
+                ORDER BY FIELD(day_of_week, 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'), start_time
+            """, (teacher_id,))
+            availability = cur.fetchall()
+            return jsonify(availability)
+    except Exception as e:
+        app.logger.error(f"Error fetching availability: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/teachers/<int:teacher_id>/availability', methods=['POST'])
+@login_required
+@roles_required('admin')
+def update_teacher_availability(teacher_id):
+    data = request.json
+    try:
+        with mysql_connection() as (mysql, cur):
+            # Verify teacher belongs to user
+            cur.execute("SELECT teacher_id FROM teachers WHERE teacher_id = %s AND user_id = %s", (teacher_id, session.get('user_id')))
+            if not cur.fetchone():
+                return jsonify({'error': 'Unauthorized'}), 403
+            
+            # Simple approach: Clear and re-add
+            cur.execute("DELETE FROM teacher_availability WHERE teacher_id = %s", (teacher_id,))
+            
+            for slot in data.get('availability', []):
+                cur.execute("""
+                    INSERT INTO teacher_availability (teacher_id, day_of_week, start_time, end_time, preference_level)
+                    VALUES (%s, %s, %s, %s, %s)
+                """, (teacher_id, slot['day_of_week'], slot['start_time'], slot['end_time'], slot['preference_level']))
+            
+            mysql.commit()
+            
+            # Log activity
+            cur.execute("INSERT INTO activity (user_id, action_type, description, entity_type, entity_id) VALUES (%s, %s, %s, %s, %s)",
+                       (session.get('user_id'), 'UPDATE', f"Updated availability for teacher {teacher_id}", 'teacher', teacher_id))
+            mysql.commit()
+            
+            return jsonify({'success': True})
+    except Exception as e:
+        app.logger.error(f"Error updating availability: {e}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/classes', methods=['GET'])
 @login_required
 def get_classes():
     try:
+        eff_user_id = get_effective_user_id()
         with mysql_connection() as (mysql, cur):
             cur.execute("""
             SELECT 
@@ -757,7 +845,7 @@ def get_classes():
             LEFT JOIN subjects s ON cs.subject_id = s.subject_id
             WHERE c.user_id = %s
             GROUP BY c.class_id, c.name, g.name, cr.room_number, c.students_count
-            """, (session.get('user_id'),))
+            """, (eff_user_id,))
             classes = cur.fetchall()
             return jsonify(classes)
     except Exception as e:
@@ -809,6 +897,7 @@ def get_class(classes_id):
          
 @app.route('/api/classes', methods=['POST'])
 @login_required
+@roles_required('admin')
 def add_class():
     class_data = request.json
     
@@ -893,6 +982,7 @@ def add_class():
         # Close database connections
 @app.route('/api/classes/<int:class_id>', methods=['PUT'])
 @login_required
+@roles_required('admin')
 def update_class(class_id):
     # Get class data from request
     class_data = request.get_json()
@@ -971,6 +1061,7 @@ def update_class(class_id):
         return jsonify({"error": str(e)}), 500
 @app.route('/api/classes/<int:class_id>', methods=['DELETE'])
 @login_required
+@roles_required('admin')
 def delete_class(class_id):
 
     try:
@@ -1007,6 +1098,7 @@ def delete_class(class_id):
 @login_required
 def get_subjects():
     try:
+        eff_user_id = get_effective_user_id()
         with mysql_connection() as (mysql, cur):
             cur.execute("""
                 SELECT s.subject_id, s.name, s.type, s.weekly_hours, d.name as department_name, t.teacher_name
@@ -1015,7 +1107,7 @@ def get_subjects():
                 JOIN teacher_subjects ts ON s.subject_id = ts.subject_id
                 JOIN teachers t ON ts.teacher_id = t.teacher_id
                 WHERE s.user_id = %s
-            """, (session.get('user_id'),))
+            """, (eff_user_id,))
             subjects = cur.fetchall()
             return jsonify(subjects)
     except Exception as e:
@@ -1023,6 +1115,7 @@ def get_subjects():
         return jsonify({'error': str(e)}), 500
 @app.route('/api/subjects', methods=['POST'])
 @login_required
+@roles_required('admin')
 def add_subject():
     subject_data = request.json
     
@@ -1121,6 +1214,7 @@ def get_subject(subject_id):
 
 @app.route('/api/subjects/<int:subject_id>', methods=['DELETE'])
 @login_required
+@roles_required('admin')
 def delete_subject(subject_id):
     try:
         mysql = get_mysql_connection()
@@ -1171,6 +1265,7 @@ def delete_subject(subject_id):
     
 @app.route('/api/subjects/<int:subject_id>', methods=['PUT'])
 @login_required
+@roles_required('admin')
 def update_subject(subject_id):
     data = request.json
     try:
@@ -1254,12 +1349,13 @@ def update_subject(subject_id):
 @login_required
 def get_classrooms():
     try:
+        eff_user_id = get_effective_user_id()
         with mysql_connection() as (mysql, cur):
             cur.execute("""
                 SELECT classroom_id, room_number, CONCAT(UPPER(SUBSTRING(type, 1, 1)), LOWER(SUBSTRING(type, 2))) AS type, capacity, building, floor
                 FROM classrooms
                 WHERE user_id = %s
-            """, (session.get('user_id'),))
+            """, (eff_user_id,))
             classrooms = cur.fetchall()
             return jsonify(classrooms)
     except Exception as e:
@@ -1284,6 +1380,7 @@ def get_classroom(classroom_id):
         return jsonify({'error': 'Failed to fetch classroom'}), 500
 @app.route('/api/classrooms/<int:classroom_id>', methods=['DELETE'])
 @login_required
+@roles_required('admin')
 def delete_classroom(classroom_id):
     
     try:
@@ -1321,6 +1418,7 @@ def delete_classroom(classroom_id):
         return jsonify({'error': str(e)}), 500
 @app.route('/api/classrooms/<int:classroom_id>', methods=['PUT'])
 @login_required
+@roles_required('admin')
 def update_classroom(classroom_id):
     classroom_data = request.json
     try:
@@ -1373,6 +1471,7 @@ def update_classroom(classroom_id):
 @login_required
 def get_departments():
     try:
+        eff_user_id = get_effective_user_id()
         with mysql_connection() as (mysql, cur):
             cur.execute("""
                 SELECT DISTINCT d.name, d.department_id
@@ -1380,7 +1479,7 @@ def get_departments():
                 LEFT JOIN teachers t
                 ON t.department_id = d.department_id
                 WHERE t.user_id = %s
-            """, (session.get('user_id'),))
+            """, (eff_user_id,))
             departments = cur.fetchall()
             return jsonify(departments), 200
     except Exception as e:
@@ -1388,6 +1487,7 @@ def get_departments():
         return jsonify({'error': 'Failed to retrieve departments'}), 500
 @app.route('/api/classrooms', methods=['POST'])
 @login_required
+@roles_required('admin')
 def add_classroom():
     classroom_data = request.json
     
@@ -1429,6 +1529,7 @@ def add_classroom():
 # Timetable Generation Routes
 @app.route('/api/generate-timetable', methods=['POST'])
 @login_required
+@roles_required('admin')
 def generate_timetable():
     timetable_params = request.json
 
@@ -1600,6 +1701,27 @@ def generate_timetable():
     
     classes_list = list(classes_data.values())
     
+    # Fetch Teacher Availability
+    cur.execute("""
+        SELECT t.teacher_name, ta.day_of_week, 
+               TIME_FORMAT(ta.start_time, '%H:%i') as start_time, 
+               TIME_FORMAT(ta.end_time, '%H:%i') as end_time, 
+               ta.preference_level
+        FROM teacher_availability ta
+        JOIN teachers t ON ta.teacher_id = t.teacher_id
+        WHERE t.user_id = %s
+    """, (user_id,))
+    availability_results = cur.fetchall()
+    
+    teacher_availability_dict = defaultdict(list)
+    for avail in availability_results:
+        teacher_availability_dict[avail['teacher_name']].append({
+            'day': avail['day_of_week'],
+            'start': avail['start_time'],
+            'end': avail['end_time'],
+            'status': avail['preference_level']
+        })
+
     # Get additional classroom information
     cur.execute("""
         SELECT classroom_id, room_number, type, capacity, building, floor
@@ -1623,6 +1745,7 @@ def generate_timetable():
         "theory_and_practical": theory_and_practical_list,
         "classrooms": classes_list,
         "classes": classes_list,
+        "teacher_availability": dict(teacher_availability_dict),
         "start_date": start_date,
         "end_date": end_date,
         "start_time": start_time,
@@ -1811,8 +1934,9 @@ def convert_bson(doc):
 @app.route('/api/view-timetables', methods=['GET'])
 @login_required
 def get_timetables():
+    eff_user_id = get_effective_user_id()
     mongo_db = get_mongodb_connection()
-    timetables_cursor = mongo_db["timetables"].find({"user_id": session.get('user_id')})
+    timetables_cursor = mongo_db["timetables"].find({"user_id": eff_user_id})
     
     timetables = [convert_bson(doc) for doc in timetables_cursor]
     generated_timetables = [json.loads(t['generated_timetable']) for t in timetables if 'generated_timetable' in t]
@@ -1842,6 +1966,7 @@ def get_timetables():
 @login_required
 def get_absences():
     try:
+        eff_user_id = get_effective_user_id()
         with mysql_connection() as (mysql, cur):
             cur.execute("""
                 SELECT ta.absence_id, ta.start_date, ta.end_date, ta.reason, ta.status,
@@ -1850,10 +1975,9 @@ def get_absences():
                 JOIN teachers t ON ta.teacher_id = t.teacher_id
                 WHERE t.user_id = %s
                 ORDER BY ta.start_date DESC
-            """, (session.get('user_id'),))
+            """, (eff_user_id,))
         
             absences = cur.fetchall()
-            user_id = session.get('user_id')
         
             # Convert date objects to strings and add affected count
             for absence in absences:
@@ -1863,7 +1987,7 @@ def get_absences():
                 absence['end_date'] = ed
                 
                 # Fetch affected classes count
-                affected = get_affected_classes(absence['teacher_name'], sd, ed, user_id)
+                affected = get_affected_classes(absence['teacher_name'], sd, ed, eff_user_id)
                 absence['affected_count'] = len(affected)
         
             return jsonify(absences)
@@ -1873,6 +1997,7 @@ def get_absences():
         return jsonify({'error': str(e)}), 500
 @app.route('/api/absences', methods=['POST'])
 @login_required
+@roles_required('admin')
 def add_absence():
     absence_data = request.json
     
@@ -1949,6 +2074,7 @@ def get_absence(absence_id: int):
 
 @app.route('/api/absences/<int:absence_id>', methods=['DELETE'])
 @login_required
+@roles_required('admin')
 def delete_absence(absence_id: int):
     try:
         with mysql_connection() as (mysql, cur):
@@ -2179,6 +2305,7 @@ def auto_suggest_replacement(absence_id: int):
         return jsonify({'error': 'Failed to fetch suggestions'}), 500
 @app.route('/api/absences/<int:absence_id>/manual-assign', methods=['POST'])
 @login_required
+@roles_required('admin')
 def manual_assign_replacement(absence_id: int):
     """Assign a specific replacement teacher to an absence and mark it resolved."""
     user_id = session.get('user_id')
@@ -2252,6 +2379,7 @@ def manual_assign_replacement(absence_id: int):
         return jsonify({'error': 'Failed to assign replacement'}), 500
 @app.route('/api/absences/<int:absence_id>/reschedule', methods=['POST'])
 @login_required
+@roles_required('admin')
 def reschedule_absence(absence_id: int):
     """Record a reschedule resolution: new date range, then mark absence resolved."""
     user_id = session.get('user_id')
@@ -2320,25 +2448,21 @@ def reschedule_absence(absence_id: int):
 @login_required
 def get_grades():
     try:
-        mysql=get_mysql_connection()
-        cur=mysql.cursor(dictionary=True)
-        
-        cur.execute("""
-                    SELECT DISTINCT g.grade_id, g.name
-                    FROM grades g
-                    JOIN classes c ON g.grade_id = c.grade_id
-                    WHERE c.user_id = %s
-                    """, (session.get('user_id'),))
-        
-        grades=cur.fetchall()
-        
-        return jsonify(grades)
+        eff_user_id = get_effective_user_id()
+        with mysql_connection() as (mysql, cur):
+            cur.execute("""
+                        SELECT DISTINCT g.grade_id, g.name
+                        FROM grades g
+                        JOIN classes c ON g.grade_id = c.grade_id
+                        WHERE c.user_id = %s
+                        """, (eff_user_id,))
+            
+            grades=cur.fetchall()
+            
+            return jsonify(grades)
     except Exception as e:
         print(f"Error fetching grades: {e}")
         return jsonify({'error': 'Failed to fetch grades: ' + str(e)}), 500
-    finally:
-        cur.close()
-        mysql.close()
         
 
 @app.route('/api/profile', methods=['GET', 'POST'])
@@ -2685,20 +2809,74 @@ def export_excel():
                         # Excel sheet name limit is 31 chars and no special chars
                         safe_sheet_name = "".join(x for x in class_name if x.isalnum() or x in " -_")[:31]
                         df.to_excel(writer, sheet_name=safe_sheet_name or "Timetable")
+                        
+                        # Apply styling
+                        worksheet = writer.sheets[safe_sheet_name or "Timetable"]
+                        
+                        # Set column widths
+                        for column in worksheet.columns:
+                            max_length = 0
+                            column_letter = column[0].column_letter
+                            for cell in column:
+                                try:
+                                    if cell.value:
+                                        lines = str(cell.value).split('\n')
+                                        curr_max = max(len(line) for line in lines)
+                                        if curr_max > max_length:
+                                            max_length = curr_max
+                                except:
+                                    pass
+                            worksheet.column_dimensions[column_letter].width = max_length + 5
+
+                        # Colors
+                        theory_fill = PatternFill(start_color="E6F0FF", end_color="E6F0FF", fill_type="solid")
+                        practical_fill = PatternFill(start_color="E6FFE6", end_color="E6FFE6", fill_type="solid")
+                        
+                        for row in worksheet.iter_rows(min_row=2, min_col=2):
+                            for cell in row:
+                                if cell.value and isinstance(cell.value, str):
+                                    cell.alignment = Alignment(wrap_text=True, horizontal='center', vertical='center')
+                                    if "[Theory]" in cell.value:
+                                        cell.fill = theory_fill
+                                    elif "[Practical]" in cell.value:
+                                        cell.fill = practical_fill
+                        
                         sheet_added = True
                 
                 elif category_type == 'teacher':
                     teacher_schedule = filter_timetable_by(generated_timetable, filter_value, 'teacher')
                     if teacher_schedule:
                         df = format_timetable_df(teacher_schedule, lecture_duration)
-                        df.to_excel(writer, sheet_name=filter_value[:31] if filter_value else "Teacher")
+                        sheet_name = filter_value[:31] if filter_value else "Teacher"
+                        df.to_excel(writer, sheet_name=sheet_name)
+                        worksheet = writer.sheets[sheet_name]
+                        # Apply same styling logic
+                        for column in worksheet.columns:
+                            worksheet.column_dimensions[column[0].column_letter].width = 25
+                        for row in worksheet.iter_rows(min_row=2, min_col=2):
+                            for cell in row:
+                                cell.alignment = Alignment(wrap_text=True, horizontal='center', vertical='center')
+                                if cell.value and isinstance(cell.value, str):
+                                    if "[Theory]" in cell.value: cell.fill = PatternFill(start_color="E6F0FF", end_color="E6F0FF", fill_type="solid")
+                                    elif "[Practical]" in cell.value: cell.fill = PatternFill(start_color="E6FFE6", end_color="E6FFE6", fill_type="solid")
                         sheet_added = True
                 
                 elif category_type == 'classroom':
                     classroom_schedule = filter_timetable_by(generated_timetable, filter_value, 'classroom')
                     if classroom_schedule:
                         df = format_timetable_df(classroom_schedule, lecture_duration)
-                        df.to_excel(writer, sheet_name=filter_value[:31] if filter_value else "Classroom")
+                        sheet_name = filter_value[:31] if filter_value else "Classroom"
+                        df.to_excel(writer, sheet_name=sheet_name)
+                        worksheet = writer.sheets[sheet_name]
+                        # Apply same styling logic
+                        for column in worksheet.columns:
+                            worksheet.column_dimensions[column[0].column_letter].width = 25
+                        for row in worksheet.iter_rows(min_row=2, min_col=2):
+                            for cell in row:
+                                cell.alignment = Alignment(wrap_text=True, horizontal='center', vertical='center')
+                                if cell.value and isinstance(cell.value, str):
+                                    if "[Theory]" in cell.value: cell.fill = PatternFill(start_color="E6F0FF", end_color="E6F0FF", fill_type="solid")
+                                    elif "[Practical]" in cell.value: cell.fill = PatternFill(start_color="E6FFE6", end_color="E6FFE6", fill_type="solid")
                         sheet_added = True
                 
                 # Fallback if no data was found to prevent Excel crash
@@ -2742,7 +2920,8 @@ def format_timetable_df(schedule_data, lecture_duration_mins):
             cell = schedule_data.get(day, {}).get(slot, '-')
             if isinstance(cell, dict):
                 total_lectures += 1
-                row[day] = f"{cell['subject']}\n({cell.get('classroom', cell.get('className', ''))})"
+                s_type = cell.get('type', 'Theory')
+                row[day] = f"{cell['subject']}\n({cell.get('classroom', cell.get('className', ''))})\n[{s_type}]"
             else:
                 row[day] = cell
         grid.append(row)
@@ -2777,6 +2956,48 @@ def filter_timetable_by(generated_timetable, value, target_type):
                     if day not in filtered: filtered[day] = {}
                     filtered[day][slot] = {**data, 'className': class_name}
     return filtered
+
+
+# Staff Account Management
+@app.route("/api/staff", methods=["GET"])
+@login_required
+@roles_required("admin")
+def get_staff_accounts():
+    try:
+        with mysql_connection() as (mysql, cur):
+            cur.execute("""SELECT user_id, name, email, role FROM users WHERE parent_admin_id = %s""", (session.get("user_id"),))
+            staff = cur.fetchall()
+            return jsonify(staff)
+    except Exception as e: return jsonify({"error": str(e)}), 500
+
+@app.route("/api/staff", methods=["POST"])
+@login_required
+@roles_required("admin")
+def create_staff_account():
+    data = request.json
+    name, email, password = data.get("name"), data.get("email"), data.get("password")
+    if not all([name, email, password]): return jsonify({"error": "Missing fields"}), 400
+    try:
+        hashed_password = generate_password_hash(password)
+        with mysql_connection() as (mysql, cur):
+            cur.execute("SELECT user_id FROM users WHERE email = %s", (email,))
+            if cur.fetchone(): return jsonify({"error": "Email exists"}), 409
+            cur.execute("""INSERT INTO users (name, email, password_hash, role, parent_admin_id, created_at) VALUES (%s, %s, %s, "teacher", %s, %s)""", (name, email, hashed_password, session.get("user_id"), datetime.now()))
+            mysql.commit()
+            return jsonify({"message": "Success"}), 201
+    except Exception as e: return jsonify({"error": str(e)}), 500
+
+@app.route("/api/staff/<int:staff_user_id>", methods=["DELETE"])
+@login_required
+@roles_required("admin")
+def delete_staff_account(staff_user_id):
+    try:
+        with mysql_connection() as (mysql, cur):
+            cur.execute("DELETE FROM users WHERE user_id = %s AND parent_admin_id = %s", (staff_user_id, session.get("user_id")))
+            mysql.commit()
+            return jsonify({"message": "Deleted"})
+    except Exception as e: return jsonify({"error": str(e)}), 500
+
 
 if __name__ == '__main__':
     app.run(debug=True)

@@ -1,1 +1,1 @@
-python website\app.py
+uv run website\app.py

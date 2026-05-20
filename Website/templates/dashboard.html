@@ -8,14 +8,73 @@
     <script src="{{ url_for('static', filename='script.js') }}"></script>
     <!-- <script src="server.js" defer></script> -->
     <link rel="shortcut icon" href="{{url_for('static',filename='icon.jpg')}}" type="image/x-icon">
+    <script>
+        window.USER_ROLE = "{{ session.get('user_role') }}";
+    </script>
+    <style>
+        /* Mobile Toggle Button */
+        .mobile-toggle {
+            display: none;
+            position: fixed;
+            top: 15px;
+            left: 15px;
+            z-index: 1001;
+            background: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+
+        /* Adaptive Layout */
+        @media (max-width: 992px) {
+            .sidebar {
+                transform: translateX(-100%);
+                position: fixed;
+                z-index: 1000;
+                transition: transform 0.3s ease;
+            }
+            .sidebar.active {
+                transform: translateX(0);
+            }
+            .main-content {
+                margin-left: 0 !important;
+                width: 100% !important;
+            }
+            .mobile-toggle {
+                display: block;
+            }
+            .top-nav {
+                padding-left: 60px;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .stats-grid {
+                grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+                gap: 15px;
+            }
+            .action-grid {
+                grid-template-columns: 1fr;
+            }
+            .data-table-container {
+                overflow-x: auto;
+            }
+        }
+    </style>
 </head>
 <body>
+    <button class="mobile-toggle" id="menu-toggle">
+        <i class="fas fa-bars"></i>
+    </button>
     <!-- Main App Container -->
     <div id="app-container" class="app-container">
         <!-- Sidebar Navigation -->
         <div class="sidebar">
             <div class="sidebar-header">
-                <h1><i class="fas fa-calendar-alt" ></i> TimeTableGenius</h1>
+                <h1><i class="fas fa-calendar-alt"></i> <span>TimeTable<span style="color:var(--primary-color);">Genius</span></span></h1>
             </div>
             <ul class="sidebar-menu">
                 <li class="sidebar-item active" data-page="dashboard-page">
@@ -61,15 +120,20 @@
                 <!--Create a drop down manu for profile Setting add Departments in the value-->
                 <!--onclick of profile redirect to profile page on div-->
                 <div class="user-info">
-
                     <img src="{{url_for('static', filename='image.png')}}" alt="User Avatar" id='profile-picture'class="avatar">
-                    
-                    <span id="user-name">User</span>
+                    <div style="display: flex; flex-direction: column; margin-left: 10px;">
+                        <span id="user-name" style="font-weight: 600; color: var(--text-color);">{{ user_name }}</span>
+                        <span class="role-badge" style="font-size: 0.65rem; background: var(--light-gray); color: var(--primary-color); padding: 1px 6px; border-radius: 4px; font-weight: 700; text-transform: uppercase; width: fit-content;">{{ session.get('user_role', 'User') | capitalize }}</span>
+                    </div>
                 </div>
             </div>
 
             <!-- Page Content -->
             <div class="page-content">
+                <div id="read-only-banner" style="display: none; background: #fff3cd; color: #856404; padding: 10px 15px; margin-bottom: 20px; border-radius: 8px; border: 1px solid #ffeeba; font-size: 0.9rem; align-items: center;">
+                    <i class="fas fa-info-circle" style="margin-right: 10px;"></i>
+                    <span>You are viewing this as a <strong>Teacher</strong>. Some actions are restricted to Administrators.</span>
+                </div>
                 <!-- Dashboard Page -->
                 <div class="page" id="dashboard-page">
                     <h2>Dashboard</h2>
@@ -131,32 +195,62 @@
                 <!-- Teachers Page -->
                 <div class="page" id="teachers-page" style="display: none;">
                     <div class="page-header">
-                        <h2>Teachers</h2>
+                        <h2>Teachers Management</h2>
                         <button class="btn-primary" id="add-teacher-btn"><i class="fas fa-plus"></i> Add Teacher</button>
                     </div>
-                    <div class="search-filter">
-                        <input type="text" id="teacher-search" placeholder="Search teachers...">
-                        <select id="teacher-department-filter">
-                            <option value="All Department">All Department</option>
-                        </select>
-                        <button class="btn-secondary" id="export-teachers-btn"><i class="fas fa-file-excel"></i> Export to Excel</button>
+
+                    <div class="tab-container" style="display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 1px solid var(--border-color); padding-bottom: 10px;">
+                        <button class="tab-btn active" onclick="switchTeacherTab('faculty')" id="tab-faculty" style="background: none; border: none; padding: 8px 15px; cursor: pointer; font-weight: 600; color: var(--primary-color); border-bottom: 2px solid var(--primary-color);">Faculty List</button>
+                        <button class="tab-btn admin-only" onclick="switchTeacherTab('staff')" id="tab-staff" style="background: none; border: none; padding: 8px 15px; cursor: pointer; font-weight: 600; color: var(--dark-gray);">Staff Accounts</button>
                     </div>
-                    <div class="data-table-container">
-                        <table class="data-table" id="teachers-table">
-                            <thead>
-                                <tr>
-                                    <th>Name</th>
-                                    <th>Email/Phone</th>
-                                    <th>Department</th>
-                                    <th>Subjects</th>
-                                    <th>Weekly Hours</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody id="teacher-table">
-                                <!-- Teachers will be populated dynamically -->
-                            </tbody>
-                        </table>
+
+                    <div id="faculty-list-view">
+                        <div class="search-filter">
+                            <input type="text" id="teacher-search" placeholder="Search teachers...">
+                            <select id="teacher-department-filter">
+                                <option value="All Department">All Department</option>
+                            </select>
+                            <button class="btn-secondary" id="export-teachers-btn"><i class="fas fa-file-excel"></i> Export to Excel</button>
+                        </div>
+                        <div class="data-table-container">
+                            <table class="data-table" id="teachers-table">
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Email/Phone</th>
+                                        <th>Department</th>
+                                        <th>Subjects</th>
+                                        <th>Weekly Hours</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="teacher-table">
+                                    <!-- Teachers will be populated dynamically -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div id="staff-list-view" style="display: none;">
+                        <div class="page-header" style="padding: 0; border-bottom: none; margin-bottom: 15px;">
+                            <p style="color: var(--dark-gray); font-size: 0.9rem;">Manage login credentials for your teachers to view the institutional timetable.</p>
+                            <button class="btn-primary btn-sm" onclick="openModal('Create Staff Account', 'staff-form')"><i class="fas fa-user-plus"></i> Create Staff</button>
+                        </div>
+                        <div class="data-table-container">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Email</th>
+                                        <th>Role</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="staff-table">
+                                    <!-- Staff will be populated dynamically -->
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
 

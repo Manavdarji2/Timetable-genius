@@ -2,6 +2,8 @@
 
 > AI-powered academic timetable generation and teacher absence management system built with Flask, MySQL, MongoDB, and Google Gemini 2.5 Flash.
 
+![alt text](<Screenshot 2026-05-12 181102.png>)
+
 Timetable Genius solves the combinatorial scheduling problem that institutions face every semester — assigning teachers, subjects, classrooms, and time slots without conflicts — by delegating the constraint satisfaction to a large language model. Beyond generation, it provides a full management dashboard for teachers, classes, classrooms, subjects, and real-time absence tracking with automated replacement suggestions.
 
 ---
